@@ -6,13 +6,15 @@
 #include <variant>
 #include <vector>
 
-using RuntimeValue = std::variant<WideInteger, bool>;
+using RuntimeValue = std::variant<WideInteger, bool, std::string, char>;
 
 struct Expression
 {
     enum class Type
     {
         Number,
+        String,
+        Character,
         Identifier,
         Unary,
         Binary
@@ -52,6 +54,8 @@ struct Statement
     std::string name;
     char operation = '=';
     std::unique_ptr<Expression> expression;
+    std::vector<std::unique_ptr<Expression>> arguments;
+    bool newline = true;
 };
 
 struct Function

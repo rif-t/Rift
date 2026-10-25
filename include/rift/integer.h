@@ -97,6 +97,22 @@ struct UInt128
         std::reverse(result.begin(), result.end());
         return result;
     }
+
+    std::string toBase(unsigned base, bool uppercase = false) const
+    {
+        if (base < 2 || base > 36) throw std::runtime_error("Integer base must be from 2 to 36");
+        if (*this == UInt128{}) return "0";
+        const char* digits = uppercase ? "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" : "0123456789abcdefghijklmnopqrstuvwxyz";
+        std::string result;
+        UInt128 value = *this;
+        while (!(value == UInt128{})) {
+            UInt128 rem{};
+            value = divide(value, {0, base}, rem);
+            result.push_back(digits[rem.low]);
+        }
+        std::reverse(result.begin(), result.end());
+        return result;
+    }
 };
 
 struct WideInteger
@@ -106,6 +122,7 @@ struct WideInteger
     bool isUnsigned = false;
 
     std::string toString() const { return (negative && !(magnitude == UInt128{}) ? "-" : "") + magnitude.toString(); }
+    std::string toBase(unsigned base, bool uppercase = false) const { return (negative && !(magnitude == UInt128{}) ? "-" : "") + magnitude.toBase(base, uppercase); }
 };
 
 inline bool integerFitsType(const WideInteger& value, const std::string& type)

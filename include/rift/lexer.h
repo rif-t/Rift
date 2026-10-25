@@ -7,10 +7,14 @@ enum class TokenType
 {
     Identifier,
     Number,
+    StringLiteral,
+    CharacterLiteral,
 
     Func,
     Int,
     Bool,
+    StringType,
+    CharType,
     IntegerType,
     True,
     False,
@@ -24,6 +28,7 @@ enum class TokenType
 	Divide,
     Power,
     Remainder,
+    Comma,
     PlusEqual,
     MinusEqual,
     MultiplyEqual,

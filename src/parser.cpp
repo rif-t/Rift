@@ -97,7 +97,7 @@ Statement Parser::parseStatement()
         );
     }
 
-    if (current().text == "print") {
+    if (current().text == "print" || current().text == "println") {
         return parsePrint();
     }
 
@@ -138,18 +138,20 @@ Statement Parser::parseStatement()
 
 Statement Parser::parsePrint()
 {
-    consume(); // print
-
-    expect(TokenType::LeftParen);
-
-    auto expression = parseExpression();
-
-    expect(TokenType::RightParen);
-
     Statement statement;
     statement.type = Statement::Type::Print;
-    statement.expression = std::move(expression);
+    statement.newline = consume().text == "println";
 
+    expect(TokenType::LeftParen);
+    if (current().type != TokenType::RightParen) {
+        do {
+            statement.arguments.push_back(parseExpression());
+            if (current().type != TokenType::Comma) break;
+            consume();
+        } while (true);
+    }
+
+    expect(TokenType::RightParen);
     return statement;
 }
 
@@ -167,7 +169,8 @@ VariableDeclaration Parser::parseVariable()
 
     const Token& type = current();
 
-    if (type.type != TokenType::Int && type.type != TokenType::IntegerType && type.type != TokenType::Bool) {
+    if (type.type != TokenType::Int && type.type != TokenType::IntegerType && type.type != TokenType::Bool &&
+        type.type != TokenType::StringType && type.type != TokenType::CharType) {
         throw std::runtime_error("Expected type");
     }
 
@@ -269,6 +272,22 @@ std::unique_ptr<Expression> Parser::parsePrimary()
 
         consume();
 
+        return expression;
+    }
+
+    if (token.type == TokenType::StringLiteral) {
+        auto expression = std::make_unique<Expression>();
+        expression->type = Expression::Type::String;
+        expression->value = token.text;
+        consume();
+        return expression;
+    }
+
+    if (token.type == TokenType::CharacterLiteral) {
+        auto expression = std::make_unique<Expression>();
+        expression->type = Expression::Type::Character;
+        expression->value = token.text[0];
+        consume();
         return expression;
     }
 

@@ -1,4 +1,5 @@
 #include "interpreter.h"
+#include "fmt.h"
 
 #include <algorithm>
 #include <iostream>
@@ -88,17 +89,39 @@ WideInteger applyArithmetic(char operation, WideInteger a, WideInteger b)
 
 RuntimeValue validateValue(RuntimeValue value, const std::string& type, const std::string& name)
 {
+    if (type == "string") {
+        if (!std::holds_alternative<std::string>(value)) throw std::runtime_error("Value for '" + name + "' must be string");
+        return value;
+    }
+    if (type == "char") {
+        if (!std::holds_alternative<char>(value)) throw std::runtime_error("Value for '" + name + "' must be char");
+        return value;
+    }
     if (type == "bool") {
         if (!std::holds_alternative<bool>(value)) throw std::runtime_error("Value for '" + name + "' must be bool");
         return value;
     }
-    if (std::holds_alternative<bool>(value)) throw std::runtime_error("Value for '" + name + "' must be an integer");
+    if (!std::holds_alternative<WideInteger>(value)) throw std::runtime_error("Value for '" + name + "' must be an integer");
     auto integer = std::get<WideInteger>(value);
     const bool isUnsigned = type.starts_with("uint");
     if (integer.negative && isUnsigned) throw std::runtime_error("Unsigned integer cannot be negative");
     if (!integerFitsType(integer, type)) throw std::runtime_error("Value for '" + name + "' is outside the range of " + type);
     integer.isUnsigned = isUnsigned;
     return integer;
+}
+
+std::string stringify(const RuntimeValue& value)
+{
+    if (const auto* integer = std::get_if<WideInteger>(&value)) return integer->toString();
+    if (const auto* boolean = std::get_if<bool>(&value)) return *boolean ? "true" : "false";
+    if (const auto* string = std::get_if<std::string>(&value)) return *string;
+    return std::string(1, std::get<char>(value));
+}
+
+rift::fmt::Argument formatArgument(const RuntimeValue& value)
+{
+    if (const auto* integer = std::get_if<WideInteger>(&value)) return {integer->toString(), true, *integer};
+    return {stringify(value), false, {}};
 }
 }
 
@@ -148,9 +171,19 @@ void Interpreter::runFunction(const Function& function)
             value = validateValue(std::move(value), declaredType->second, statement.name);
             variables_[statement.name] = value;
         } else if (statement.type == Statement::Type::Print) {
-            RuntimeValue value = evaluate(*statement.expression);
-            if (const auto* boolean = std::get_if<bool>(&value)) std::cout << (*boolean ? "true" : "false") << '\n';
-            else std::cout << std::get<WideInteger>(value).toString() << '\n';
+            std::vector<RuntimeValue> values;
+            values.reserve(statement.arguments.size());
+            for (const auto& argument : statement.arguments) values.push_back(evaluate(*argument));
+            std::string output;
+            if (!values.empty() && std::holds_alternative<std::string>(values.front())) {
+                std::vector<rift::fmt::Argument> formatArguments;
+                formatArguments.reserve(values.size() - 1);
+                for (std::size_t i = 1; i < values.size(); ++i) formatArguments.push_back(formatArgument(values[i]));
+                output = rift::fmt::format(std::get<std::string>(values.front()), formatArguments);
+            } else {
+                for (const auto& value : values) output += stringify(value);
+            }
+            rift::fmt::write(output, statement.newline);
         }
     }
 }
@@ -160,6 +193,10 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
     switch (expression.type) {
     case Expression::Type::Number:
         return expression.value;
+    case Expression::Type::String:
+        return expression.value;
+    case Expression::Type::Character:
+        return expression.value;
     case Expression::Type::Identifier: {
         auto it = variables_.find(expression.name);
         if (it == variables_.end()) throw std::runtime_error("Undefined variable: " + expression.name);
@@ -167,13 +204,18 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
     }
     case Expression::Type::Unary: {
         RuntimeValue value = evaluate(*expression.left);
-        if (std::holds_alternative<bool>(value)) throw std::runtime_error("Boolean values cannot be negated");
+        if (!std::holds_alternative<WideInteger>(value)) throw std::runtime_error("Only integers can be negated");
         auto integer = std::get<WideInteger>(value);
         return negate(integer);
     }
     case Expression::Type::Binary: {
         RuntimeValue l = evaluate(*expression.left), r = evaluate(*expression.right);
-        if (std::holds_alternative<bool>(l) || std::holds_alternative<bool>(r)) throw std::runtime_error("Boolean values cannot be used with arithmetic operators");
+        if (expression.operation == '+' &&
+            (std::holds_alternative<std::string>(l) || std::holds_alternative<char>(l)) &&
+            (std::holds_alternative<std::string>(r) || std::holds_alternative<char>(r))) {
+            return stringify(l) + stringify(r);
+        }
+        if (!std::holds_alternative<WideInteger>(l) || !std::holds_alternative<WideInteger>(r)) throw std::runtime_error("These values cannot be used with arithmetic operators");
         WideInteger a = std::get<WideInteger>(l), b = std::get<WideInteger>(r);
         return applyArithmetic(expression.operation, a, b);
     }

@@ -1,6 +1,7 @@
 #include "lexer.h"
 
 #include <cctype>
+#include <stdexcept>
 
 Lexer::Lexer(const std::string& source)
     : source_(source)
@@ -55,6 +56,12 @@ std::vector<Token> Lexer::tokenize()
             else if (text == "bool") {
                 tokens.push_back({ TokenType::Bool, text });
             }
+            else if (text == "string") {
+                tokens.push_back({ TokenType::StringType, text });
+            }
+            else if (text == "char") {
+                tokens.push_back({ TokenType::CharType, text });
+            }
             else if (text == "true") {
                 tokens.push_back({ TokenType::True, text });
             }
@@ -83,6 +90,65 @@ std::vector<Token> Lexer::tokenize()
 
             tokens.push_back({ TokenType::Number, number });
 
+            continue;
+        }
+
+        if (c == '"') {
+            advance();
+            std::string text;
+            while (position_ < source_.size() && current() != '"') {
+                char ch = current();
+                advance();
+                if (ch == '\\') {
+                    if (position_ >= source_.size()) throw std::runtime_error("Unterminated escape sequence in string");
+                    ch = current();
+                    advance();
+                    switch (ch) {
+                    case 'n': text += '\n'; break;
+                    case 'r': text += '\r'; break;
+                    case 't': text += '\t'; break;
+                    case '\\': text += '\\'; break;
+                    case '"': text += '"'; break;
+                    default: throw std::runtime_error("Unknown string escape sequence");
+                    }
+                } else {
+                    text += ch;
+                }
+            }
+            if (position_ >= source_.size()) throw std::runtime_error("Unterminated string literal");
+            advance();
+            tokens.push_back({TokenType::StringLiteral, text});
+            continue;
+        }
+
+        if (c == '\'') {
+            advance();
+            std::string value;
+            if (position_ >= source_.size() || current() == '\'') throw std::runtime_error("Character literal must contain exactly one character");
+            char ch = current();
+            advance();
+            if (ch == '\\') {
+                if (position_ >= source_.size()) throw std::runtime_error("Unterminated character escape");
+                ch = current(); advance();
+                switch (ch) {
+                case 'n': ch = '\n'; break;
+                case 'r': ch = '\r'; break;
+                case 't': ch = '\t'; break;
+                case '\\': ch = '\\'; break;
+                case '\'': ch = '\''; break;
+                case '0': ch = '\0'; break;
+                default: throw std::runtime_error("Unknown character escape sequence");
+                }
+            }
+            if (current() != '\'') throw std::runtime_error("Character literal must contain exactly one character");
+            advance();
+            tokens.push_back({TokenType::CharacterLiteral, std::string(1, ch)});
+            continue;
+        }
+
+        if (c == ',') {
+            tokens.push_back({TokenType::Comma, ","});
+            advance();
             continue;
         }
 
