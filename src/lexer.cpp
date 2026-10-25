@@ -50,6 +50,9 @@ std::vector<Token> Lexer::tokenize()
             if (text == "func") {
                 tokens.push_back({ TokenType::Func, text });
             }
+            else if (text == "using") {
+                tokens.push_back({ TokenType::Using, text });
+            }
             else if (text == "int") {
                 tokens.push_back({ TokenType::Int, text });
             }
@@ -161,6 +164,18 @@ std::vector<Token> Lexer::tokenize()
             continue;
         }
 
+        if (c == '.') {
+            tokens.push_back({TokenType::Dot, "."});
+            advance();
+            continue;
+        }
+
+        if (c == ';') {
+            tokens.push_back({TokenType::Semicolon, ";"});
+            advance();
+            continue;
+        }
+
         // (
         if (c == '(') {
             tokens.push_back({ TokenType::LeftParen, "(" });
@@ -196,6 +211,10 @@ std::vector<Token> Lexer::tokenize()
             // :=
             if (current() == '=') {
                 tokens.push_back({ TokenType::ColonEqual, ":=" });
+                advance();
+            }
+            else if (current() == ':') {
+                tokens.push_back({TokenType::Namespace, "::"});
                 advance();
             }
             else {

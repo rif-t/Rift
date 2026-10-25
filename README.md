@@ -2,9 +2,17 @@
 
 Rift is an experimental C-like programming language.
 
+## Standard library
+
+Rift ships its `std` standard library. Use `using std;` to make its names
+available directly, or qualify calls with `std.` when you prefer not to add a
+using directive. No package installation is needed.
+
 ## Your first program with RIFT
 
 ```rift
+using std;
+
 func main() {
     a : int = 2
     b : string = "program"
@@ -18,6 +26,8 @@ func main() {
 Comparisons (`<`, `>`, `<=`, `>=`, `==`, `!=`) produce `bool` values. Boolean logic uses `&&`, `||`, `!` (or `and`, `or`, `not`) and short-circuits. Conditions can be written with or without parentheses; `elif` and `else` blocks are supported. The conditional expression `condition ? value : otherValue` selects a value.
 
 ```rift
+using std;
+
 score: int = 72
 passed: bool = score >= 50
 result: string = passed ? "win" : "lose"

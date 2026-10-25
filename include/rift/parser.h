@@ -37,4 +37,5 @@ private:
 
     const std::vector<Token>& tokens_;
     size_t position_ = 0;
+    bool usingStd_ = false;
 };

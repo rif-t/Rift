@@ -48,7 +48,16 @@ Program Parser::parse()
     Program program;
 
     while (position_ < tokens_.size()) {
-        if (current().type == TokenType::Func) {
+        if (current().type == TokenType::Using) {
+            consume();
+            if (current().type != TokenType::Identifier || current().text != "std") {
+                throw std::runtime_error("Only the standard 'std' namespace is available");
+            }
+            consume();
+            expect(TokenType::Semicolon);
+            usingStd_ = true;
+        }
+        else if (current().type == TokenType::Func) {
             program.functions.push_back(parseFunction());
         }
         else {
@@ -90,7 +99,17 @@ Statement Parser::parseStatement()
         );
     }
 
+    if (current().text == "std") {
+        if (peek().type != TokenType::Dot) throw std::runtime_error("Expected '.' after std");
+        consume();
+        consume();
+        if (current().type != TokenType::Identifier || (current().text != "print" && current().text != "println")) {
+            throw std::runtime_error("Unknown function in std namespace");
+        }
+        return parsePrint();
+    }
     if (current().text == "print" || current().text == "println") {
+        if (!usingStd_) throw std::runtime_error("Use 'std." + current().text + "(...)' or add 'using std;'");
         return parsePrint();
     }
     if (current().text == "if") return parseIf();

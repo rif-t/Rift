@@ -11,6 +11,7 @@ enum class TokenType
     CharacterLiteral,
 
     Func,
+    Using,
     Int,
     Bool,
     StringType,
@@ -20,6 +21,9 @@ enum class TokenType
     False,
 
     Colon,
+    Namespace,
+    Dot,
+    Semicolon,
     Equal,
     ColonEqual,
     Plus,

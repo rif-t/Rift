@@ -1,3 +1,5 @@
+using std;
+
 /*
 
 This example shows how integer data types works and some basic math operation
