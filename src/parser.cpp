@@ -219,11 +219,20 @@ std::unique_ptr<Expression> Parser::parsePrimary()
 {
     const Token& token = current();
 
+    if (token.type == TokenType::Minus) {
+        consume();
+        auto expression = std::make_unique<Expression>();
+        expression->type = Expression::Type::Unary;
+        expression->operation = '-';
+        expression->left = parsePrimary();
+        return expression;
+    }
+
     if (token.type == TokenType::Number) {
         auto expression = std::make_unique<Expression>();
 
         expression->type = Expression::Type::Number;
-        expression->value = static_cast<std::int64_t>(std::stoll(token.text));
+        expression->value = WideInteger{UInt128::parse(token.text), false, false};
 
         consume();
 

@@ -1,11 +1,12 @@
 #pragma once
 
 #include <memory>
+#include "integer.h"
 #include <string>
 #include <variant>
 #include <vector>
 
-using RuntimeValue = std::variant<std::int64_t, std::uint64_t, bool>;
+using RuntimeValue = std::variant<WideInteger, bool>;
 
 struct Expression
 {
@@ -13,12 +14,13 @@ struct Expression
     {
         Number,
         Identifier,
+        Unary,
         Binary
     };
 
     Type type;
 
-    RuntimeValue value = std::int64_t{0};
+    RuntimeValue value = WideInteger{};
     std::string name;
 
     char operation = '\0';
