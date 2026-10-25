@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-using RuntimeValue = std::variant<WideInteger, bool, std::string, char, std::monostate>;
+using RuntimeValue = std::variant<WideInteger, long double, bool, std::string, char, std::monostate>;
 
 struct Expression
 {
@@ -39,10 +39,10 @@ struct Expression
 
 struct VariableDeclaration
 {
-    std::string name;
+    std::vector<std::string> names;
     std::string type;
-
-    std::unique_ptr<Expression> value;
+    bool isConst = false;
+    std::vector<std::unique_ptr<Expression>> values;
 };
 
 struct Statement;
@@ -75,6 +75,7 @@ struct Statement
     bool newline = true;
     std::vector<IfBranch> branches;
     std::vector<Statement> elseStatements;
+    std::vector<Statement> blockStatements;
 };
 
 struct Function

@@ -1,5 +1,8 @@
 #include "interpreter_internal.h"
 
+#include <iomanip>
+#include <limits>
+#include <sstream>
 #include <stdexcept>
 
 namespace rift::runtime {
@@ -95,8 +98,19 @@ bool compareValues(const RuntimeValue& left, const RuntimeValue& right, const st
 {
     int order = 0;
     bool comparable = true;
-    if (const auto* a = std::get_if<WideInteger>(&left)) {
+    if (const auto* a = std::get_if<long double>(&left)) {
+        if (const auto* b = std::get_if<long double>(&right)) order = *a == *b ? 0 : (*a < *b ? -1 : 1);
+        else if (const auto* bInt = std::get_if<WideInteger>(&right)) {
+            const long double bValue = std::stold(bInt->toString());
+            order = *a == bValue ? 0 : (*a < bValue ? -1 : 1);
+        }
+        else comparable = false;
+    } else if (const auto* a = std::get_if<WideInteger>(&left)) {
         if (const auto* b = std::get_if<WideInteger>(&right)) order = compareIntegers(*a, *b);
+        else if (const auto* bFloat = std::get_if<long double>(&right)) {
+            const long double aValue = std::stold(a->toString());
+            order = aValue == *bFloat ? 0 : (aValue < *bFloat ? -1 : 1);
+        }
         else comparable = false;
     } else if (const auto* a = std::get_if<std::string>(&left)) {
         if (const auto* b = std::get_if<std::string>(&right)) order = a->compare(*b);
@@ -126,6 +140,12 @@ bool requireBoolean(const RuntimeValue& value, const std::string& context)
 
 RuntimeValue validateValue(RuntimeValue value, const std::string& type, const std::string& name)
 {
+    if (type == "any") return value;
+    if (type == "float" || type == "double" || type == "decimal") {
+        if (std::holds_alternative<WideInteger>(value)) value = static_cast<long double>(std::stold(std::get<WideInteger>(value).toString()));
+        if (!std::holds_alternative<long double>(value)) throw std::runtime_error("Value for '" + name + "' must be numeric");
+        return value;
+    }
     if (type == "string") {
         if (!std::holds_alternative<std::string>(value)) throw std::runtime_error("Value for '" + name + "' must be string");
         return value;
@@ -150,6 +170,7 @@ RuntimeValue validateValue(RuntimeValue value, const std::string& type, const st
 std::string stringify(const RuntimeValue& value)
 {
     if (const auto* integer = std::get_if<WideInteger>(&value)) return integer->toString();
+    if (const auto* decimal = std::get_if<long double>(&value)) { std::ostringstream output; output << std::setprecision(std::numeric_limits<long double>::digits10 + 1) << *decimal; return output.str(); }
     if (const auto* boolean = std::get_if<bool>(&value)) return *boolean ? "true" : "false";
     if (const auto* string = std::get_if<std::string>(&value)) return *string;
     if (const auto* character = std::get_if<char>(&value)) return std::string(1, *character);

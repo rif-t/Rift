@@ -142,9 +142,11 @@ std::unique_ptr<Expression> Parser::parsePrimary()
 
     if (token.type == TokenType::Number) {
         auto expression = std::make_unique<Expression>();
-
         expression->type = Expression::Type::Number;
-        expression->value = WideInteger{UInt128::parse(token.text), false, false};
+        if (token.text.find('.') != std::string::npos) {
+            try { expression->value = std::stold(token.text); }
+            catch (...) { throw std::runtime_error("Invalid floating-point literal: " + token.text); }
+        } else expression->value = WideInteger{UInt128::parse(token.text), false, false};
 
         consume();
 

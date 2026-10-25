@@ -53,6 +53,11 @@ Program Parser::parse()
             consume();
             if (current().type != TokenType::Identifier) throw std::runtime_error("Expected namespace name after 'using'");
             std::string namespaceName = consume().text;
+            while (current().type == TokenType::Dot) {
+                consume();
+                if (current().type != TokenType::Identifier) throw std::runtime_error("Expected namespace component after '.'");
+                namespaceName += "." + consume().text;
+            }
             if (std::find(usingNamespaces_.begin(), usingNamespaces_.end(), namespaceName) == usingNamespaces_.end())
                 usingNamespaces_.push_back(namespaceName);
             if (current().type == TokenType::Semicolon) consume();
@@ -79,21 +84,22 @@ void Parser::parseNamespace(Program& program)
 {
     expect(TokenType::NamespaceKeyword);
     if (current().type != TokenType::Identifier) throw std::runtime_error("Expected namespace name");
-    const std::string namespaceName = consume().text;
-    if (!currentNamespace_.empty()) throw std::runtime_error("Nested namespaces are not supported yet");
+    const std::string localName = consume().text;
+    const std::string previousNamespace = currentNamespace_;
     expect(TokenType::LeftBrace);
-    currentNamespace_ = namespaceName;
+    currentNamespace_ = previousNamespace.empty() ? localName : previousNamespace + "." + localName;
     try {
         while (current().type != TokenType::RightBrace) {
-            if (current().type != TokenType::Func) throw std::runtime_error("Namespaces can contain function declarations only");
-            program.functions.push_back(parseFunction());
+            if (current().type == TokenType::Func) program.functions.push_back(parseFunction());
+            else if (current().type == TokenType::NamespaceKeyword) parseNamespace(program);
+            else throw std::runtime_error("Namespaces can contain function declarations or nested namespaces");
         }
         expect(TokenType::RightBrace);
     } catch (...) {
-        currentNamespace_.clear();
+        currentNamespace_ = previousNamespace;
         throw;
     }
-    currentNamespace_.clear();
+    currentNamespace_ = previousNamespace;
 }
 
 Function Parser::parseFunction()
@@ -136,6 +142,7 @@ std::string Parser::parseType(bool allowVoid)
     const Token& type = current();
     if (type.type != TokenType::Int && type.type != TokenType::IntegerType && type.type != TokenType::Bool &&
         type.type != TokenType::StringType && type.type != TokenType::CharType &&
+        !(type.type == TokenType::Identifier && (type.text == "float" || type.text == "double" || type.text == "decimal" || type.text == "any")) &&
         !(allowVoid && type.type == TokenType::VoidType)) {
         throw std::runtime_error("Expected type");
     }
@@ -153,7 +160,7 @@ Statement Parser::parseStatement()
         if (current().type == TokenType::Semicolon) consume();
         return statement;
     }
-    if (current().type != TokenType::Identifier) {
+    if (current().type != TokenType::Identifier && current().type != TokenType::Const) {
         throw std::runtime_error(
             "Expected statement"
         );
@@ -202,6 +209,13 @@ Statement Parser::parseStatement()
         default: throw std::runtime_error("Invalid assignment operator");
         }
         if (op != TokenType::Increment && op != TokenType::Decrement) statement.expression = parseExpression();
+        return statement;
+    }
+
+    if (peek().type == TokenType::ColonEqual) {
+        Statement statement;
+        statement.type = Statement::Type::VariableDeclaration;
+        statement.variable = std::make_unique<VariableDeclaration>(parseVariable());
         return statement;
     }
 
@@ -269,27 +283,37 @@ Statement Parser::parsePrint()
 
 VariableDeclaration Parser::parseVariable()
 {
-    const Token& name = current();
-
-    if (name.type != TokenType::Identifier) {
-        throw std::runtime_error("Expected variable name");
+    const bool isConst = current().type == TokenType::Const;
+    if (isConst) consume();
+    VariableDeclaration variable;
+    variable.isConst = isConst;
+    if (current().type != TokenType::Identifier) throw std::runtime_error("Expected variable name");
+    variable.names.push_back(consume().text);
+    while (current().type == TokenType::Comma) {
+        consume();
+        if (current().type != TokenType::Identifier) throw std::runtime_error("Expected variable name after ','");
+        variable.names.push_back(consume().text);
     }
 
-    consume();
-
-    expect(TokenType::Colon);
-
-    const std::string type = parseType();
-
-    expect(TokenType::Equal);
-
-    auto value = parseExpression();
-
-    VariableDeclaration variable;
-
-    variable.name = name.text;
-    variable.type = type;
-    variable.value = std::move(value);
+    variable.type = "auto";
+    bool inferred = false;
+    if (current().type == TokenType::ColonEqual) { consume(); inferred = true; }
+    else {
+        expect(TokenType::Colon);
+        variable.type = parseType();
+    }
+    if (current().type == TokenType::Equal) {
+        consume();
+        do {
+            variable.values.push_back(parseExpression());
+            if (current().type != TokenType::Comma) break;
+            consume();
+        } while (true);
+        if (variable.values.size() != variable.names.size())
+            throw std::runtime_error("Grouped declaration must have one initializer per variable");
+    } else if (inferred || isConst) {
+        throw std::runtime_error("Inferred or const variables need an initializer");
+    }
 
     return variable;
 }

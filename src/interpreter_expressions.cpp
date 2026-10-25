@@ -17,14 +17,20 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
     case Expression::Type::Boolean:
         return expression.value;
     case Expression::Type::Identifier: {
-        auto it = variables_.find(expression.name);
-        if (it == variables_.end()) throw std::runtime_error("Undefined variable: " + expression.name);
-        return it->second;
+        for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+            auto it = scope->find(expression.name);
+            if (it != scope->end()) {
+                if (std::holds_alternative<std::monostate>(it->second.value)) throw std::runtime_error("Variable used before initialization: " + expression.name);
+                return it->second.value;
+            }
+        }
+        throw std::runtime_error("Undefined variable: " + expression.name);
     }
     case Expression::Type::Unary: {
         RuntimeValue value = evaluate(*expression.left);
         if (expression.operation == "!") return !requireBoolean(value, "Logical negation operand");
-        if (!std::holds_alternative<WideInteger>(value)) throw std::runtime_error("Only integers can be negated");
+        if (std::holds_alternative<long double>(value)) return -std::get<long double>(value);
+        if (!std::holds_alternative<WideInteger>(value)) throw std::runtime_error("Only numeric values can be negated");
         auto integer = std::get<WideInteger>(value);
         return negate(integer);
     }
@@ -49,6 +55,19 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
             (std::holds_alternative<std::string>(l) || std::holds_alternative<char>(l)) &&
             (std::holds_alternative<std::string>(r) || std::holds_alternative<char>(r))) {
             return stringify(l) + stringify(r);
+        }
+        if ((std::holds_alternative<long double>(l) || std::holds_alternative<WideInteger>(l)) &&
+            (std::holds_alternative<long double>(r) || std::holds_alternative<WideInteger>(r)) &&
+            (std::holds_alternative<long double>(l) || std::holds_alternative<long double>(r))) {
+            const auto toFloat = [](const RuntimeValue& value) {
+                return std::holds_alternative<long double>(value) ? std::get<long double>(value) : std::stold(std::get<WideInteger>(value).toString());
+            };
+            const auto a = toFloat(l), b = toFloat(r);
+            if (expression.operation == "+") return a + b;
+            if (expression.operation == "-") return a - b;
+            if (expression.operation == "*") return a * b;
+            if (expression.operation == "/") { if (b == 0) throw std::runtime_error("Division by zero"); return a / b; }
+            throw std::runtime_error("Operator is not supported for floating-point values");
         }
         if (!std::holds_alternative<WideInteger>(l) || !std::holds_alternative<WideInteger>(r)) throw std::runtime_error("These values cannot be used with arithmetic operators");
         WideInteger a = std::get<WideInteger>(l), b = std::get<WideInteger>(r);

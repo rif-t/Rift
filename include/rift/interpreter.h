@@ -5,6 +5,7 @@
 #include <string>
 #include <variant>
 #include <unordered_map>
+#include <vector>
 
 class Interpreter
 {
@@ -18,8 +19,9 @@ private:
 
     RuntimeValue evaluate(const Expression& expression);
 
-    std::unordered_map<std::string, RuntimeValue> variables_;
-    std::unordered_map<std::string, std::string> variableTypes_;
+    struct Variable { RuntimeValue value; std::string type; bool isConst = false; };
+    using Scope = std::unordered_map<std::string, Variable>;
+    std::vector<Scope> scopes_;
     std::unordered_map<std::string, const Function*> functions_;
     std::vector<std::string> usingNamespaces_;
 };

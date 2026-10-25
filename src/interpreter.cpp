@@ -5,6 +5,18 @@
 
 using namespace rift::runtime;
 
+namespace {
+std::string inferType(const RuntimeValue& value)
+{
+    if (std::holds_alternative<WideInteger>(value)) return "int";
+    if (std::holds_alternative<long double>(value)) return "double";
+    if (std::holds_alternative<bool>(value)) return "bool";
+    if (std::holds_alternative<std::string>(value)) return "string";
+    if (std::holds_alternative<char>(value)) return "char";
+    throw std::runtime_error("Cannot infer a type from a void value");
+}
+}
+
 void Interpreter::run(const Program& program)
 {
     functions_.clear();
@@ -44,22 +56,19 @@ RuntimeValue Interpreter::callFunction(const std::string& name, const std::vecto
         throw std::runtime_error("Function '" + name + "' expects " + std::to_string(function.parameters.size()) + " argument(s)");
     }
 
-    auto previousVariables = std::move(variables_);
-    auto previousTypes = std::move(variableTypes_);
-    variables_.clear();
-    variableTypes_.clear();
+    auto previousScopes = std::move(scopes_);
+    scopes_.clear();
+    scopes_.emplace_back();
     try {
         for (std::size_t i = 0; i < arguments.size(); ++i) {
             const auto& [parameterName, parameterType] = function.parameters[i];
-            variables_[parameterName] = validateValue(arguments[i], parameterType, parameterName);
-            variableTypes_[parameterName] = parameterType;
+            scopes_.back()[parameterName] = {validateValue(arguments[i], parameterType, parameterName), parameterType, false};
         }
         executeStatements(function.statements);
         if (!function.returnType.empty() && function.returnType != "void") {
             throw std::runtime_error("Function '" + name + "' completed without returning a value");
         }
-        variables_ = std::move(previousVariables);
-        variableTypes_ = std::move(previousTypes);
+        scopes_ = std::move(previousScopes);
         return std::monostate{};
     } catch (const ReturnSignal& signal) {
         RuntimeValue result = std::monostate{};
@@ -71,16 +80,13 @@ RuntimeValue Interpreter::callFunction(const std::string& name, const std::vecto
                 result = validateValue(*signal.value, function.returnType, "return value");
             }
         } catch (...) {
-            variables_ = std::move(previousVariables);
-            variableTypes_ = std::move(previousTypes);
+            scopes_ = std::move(previousScopes);
             throw;
         }
-        variables_ = std::move(previousVariables);
-        variableTypes_ = std::move(previousTypes);
+        scopes_ = std::move(previousScopes);
         return result;
     } catch (...) {
-        variables_ = std::move(previousVariables);
-        variableTypes_ = std::move(previousTypes);
+        scopes_ = std::move(previousScopes);
         throw;
     }
 }
@@ -90,17 +96,30 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
     for (const auto& statement : statements) {
         if (statement.type == Statement::Type::VariableDeclaration) {
             const auto& declaration = *statement.variable;
-            RuntimeValue value = validateValue(evaluate(*declaration.value), declaration.type, declaration.name);
-            variables_[declaration.name] = value;
-            variableTypes_[declaration.name] = declaration.type;
+            for (std::size_t i = 0; i < declaration.names.size(); ++i) {
+                const auto& name = declaration.names[i];
+                if (scopes_.back().contains(name)) throw std::runtime_error("Variable already declared in this scope: " + name);
+                RuntimeValue value = std::monostate{};
+                std::string type = declaration.type;
+                if (!declaration.values.empty()) {
+                    RuntimeValue evaluated = evaluate(*declaration.values[i]);
+                    if (type == "auto") type = inferType(evaluated);
+                    value = validateValue(std::move(evaluated), type, name);
+                }
+                scopes_.back()[name] = {value, type, declaration.isConst};
+            }
         } else if (statement.type == Statement::Type::Assignment) {
-            auto declaredType = variableTypes_.find(statement.name);
-            if (declaredType == variableTypes_.end()) throw std::runtime_error("Cannot assign to undefined variable: " + statement.name);
+            auto scope = scopes_.rbegin();
+            while (scope != scopes_.rend() && !scope->contains(statement.name)) ++scope;
+            if (scope == scopes_.rend()) throw std::runtime_error("Cannot assign to undefined variable: " + statement.name);
+            auto& variable = scope->at(statement.name);
+            if (variable.isConst) throw std::runtime_error("Cannot assign to const variable: " + statement.name);
             RuntimeValue value;
             if (statement.operation == "=") {
                 value = evaluate(*statement.expression);
             } else {
-                RuntimeValue currentValue = variables_.at(statement.name);
+                RuntimeValue currentValue = variable.value;
+                if (std::holds_alternative<std::monostate>(currentValue)) throw std::runtime_error("Compound assignment to uninitialized variable: " + statement.name);
                 if (std::holds_alternative<bool>(currentValue)) throw std::runtime_error("Boolean variables do not support compound arithmetic assignment");
                 WideInteger right;
                 if (statement.expression) {
@@ -112,8 +131,8 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 }
                 value = applyArithmetic(statement.operation, std::get<WideInteger>(currentValue), right);
             }
-            value = validateValue(std::move(value), declaredType->second, statement.name);
-            variables_[statement.name] = value;
+            value = validateValue(std::move(value), variable.type, statement.name);
+            variable.value = value;
         } else if (statement.type == Statement::Type::Print) {
             std::vector<RuntimeValue> values;
             values.reserve(statement.arguments.size());
@@ -132,12 +151,18 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
             bool matched = false;
             for (const auto& branch : statement.branches) {
                 if (requireBoolean(evaluate(*branch.condition), "if condition")) {
+                    scopes_.emplace_back();
                     executeStatements(branch.statements);
+                    scopes_.pop_back();
                     matched = true;
                     break;
                 }
             }
-            if (!matched) executeStatements(statement.elseStatements);
+            if (!matched && !statement.elseStatements.empty()) {
+                scopes_.emplace_back();
+                executeStatements(statement.elseStatements);
+                scopes_.pop_back();
+            }
         } else if (statement.type == Statement::Type::Return) {
             ReturnSignal signal;
             if (statement.expression) signal.value = evaluate(*statement.expression);

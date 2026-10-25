@@ -9,7 +9,7 @@ Author: rif-t 25.10.2026 21:11 GMT+2:00
 
 namespace some_math { // Using with namespace
 
-    func double(value: int) -> int { // Function that doubles input value
+    func double(value: any) -> any { // Function that doubles input value
 
         return value * 2 // returning result
 

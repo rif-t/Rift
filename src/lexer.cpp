@@ -59,6 +59,7 @@ std::vector<Token> Lexer::tokenize()
             else if (text == "namespace") {
                 tokens.push_back({ TokenType::NamespaceKeyword, text });
             }
+            else if (text == "const") tokens.push_back({TokenType::Const, text});
             else if (text == "int") {
                 tokens.push_back({ TokenType::Int, text });
             }
@@ -74,6 +75,7 @@ std::vector<Token> Lexer::tokenize()
             else if (text == "void") {
                 tokens.push_back({ TokenType::VoidType, text });
             }
+            else if (text == "float" || text == "double" || text == "decimal") tokens.push_back({TokenType::Identifier, text});
             else if (text == "true") {
                 tokens.push_back({ TokenType::True, text });
             }
@@ -107,6 +109,10 @@ std::vector<Token> Lexer::tokenize()
             while (std::isdigit(static_cast<unsigned char>(current()))) {
                 number += current();
                 advance();
+            }
+            if (current() == '.' && position_ + 1 < source_.size() && std::isdigit(static_cast<unsigned char>(source_[position_ + 1]))) {
+                number += current(); advance();
+                while (std::isdigit(static_cast<unsigned char>(current()))) { number += current(); advance(); }
             }
 
             tokens.push_back({ TokenType::Number, number });

@@ -1,0 +1,18 @@
+using std
+
+/*
+
+Working with different data types
+Author: rift-t 25.10.2026 25:25 GMT+2:00
+
+*/
+
+func main(){
+
+    a,b : int = 1,2 // Few variables at once
+
+    c := "Hey" // := means that this variable's data type will be automatically choosen
+    
+    const pi : decimal= 3.141 // const means that you cant change variable by the time program runs
+
+}
