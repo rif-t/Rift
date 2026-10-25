@@ -131,6 +131,35 @@ std::vector<Token> Lexer::tokenize()
             continue;
         }
 
+        // -
+        if (c == '-') {
+            tokens.push_back({ TokenType::Minus, "-" });
+            advance();
+            continue;
+        }
+
+        // * and **
+        if (c == '*') {
+            advance();
+
+            if (current() == '*') {
+                tokens.push_back({ TokenType::Power, "**" });
+                advance();
+            }
+            else {
+                tokens.push_back({ TokenType::Multiply, "*" });
+            }
+
+            continue;
+        }
+
+        // /
+        if (c == '/') {
+            tokens.push_back({ TokenType::Divide, "/" });
+            advance();
+            continue;
+        }
+
         // Unknown character
         advance();
     }

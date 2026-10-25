@@ -1,6 +1,8 @@
 #include "interpreter.h"
 
 #include <iostream>
+#include <limits>
+#include <cmath>
 #include <stdexcept>
 
 void Interpreter::run(const Program& program)
@@ -62,6 +64,37 @@ int Interpreter::evaluate(const Expression& expression)
         switch (expression.operation) {
         case '+':
             return left + right;
+        case '-':
+            return left - right;
+        case '*':
+            return left * right;
+        case '/':
+            if (right == 0) {
+                throw std::runtime_error("Division by zero");
+            }
+            return left / right;
+        case '^':
+            if (right < 0) {
+                throw std::runtime_error("Exponent must be non-negative for integer values");
+            }
+            {
+                long long result = 1;
+                long long base = left;
+                int exponent = right;
+                while (exponent > 0) {
+                    if (exponent % 2 != 0) {
+                        result *= base;
+                    }
+                    exponent /= 2;
+                    if (exponent > 0) {
+                        base *= base;
+                    }
+                }
+                if (result < std::numeric_limits<int>::min() || result > std::numeric_limits<int>::max()) {
+                    throw std::runtime_error("Integer overflow in exponentiation");
+                }
+                return static_cast<int>(result);
+            }
 
         default:
             throw std::runtime_error("Unknown operator");

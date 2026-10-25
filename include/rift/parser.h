@@ -22,6 +22,9 @@ private:
     VariableDeclaration parseVariable();
 
     std::unique_ptr<Expression> parseExpression();
+    std::unique_ptr<Expression> parseAdditive();
+    std::unique_ptr<Expression> parseMultiplicative();
+    std::unique_ptr<Expression> parsePower();
     std::unique_ptr<Expression> parsePrimary();
 
     const std::vector<Token>& tokens_;

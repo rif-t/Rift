@@ -4,6 +4,6 @@ func main() {
 
     y : int = 20
 
-    print(x+y)
+    print(x-y)
 
 }

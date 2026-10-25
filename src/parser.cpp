@@ -155,21 +155,60 @@ VariableDeclaration Parser::parseVariable()
 
 std::unique_ptr<Expression> Parser::parseExpression()
 {
-    auto left = parsePrimary();
+    return parseAdditive();
+}
 
-    while (current().type == TokenType::Plus) {
-        consume();
+std::unique_ptr<Expression> Parser::parseAdditive()
+{
+    auto left = parseMultiplicative();
 
-        auto right = parsePrimary();
+    while (current().type == TokenType::Plus || current().type == TokenType::Minus) {
+        const TokenType operation = consume().type;
+        auto right = parseMultiplicative();
 
         auto expression = std::make_unique<Expression>();
-
         expression->type = Expression::Type::Binary;
-        expression->operation = '+';
-
+        expression->operation = operation == TokenType::Plus ? '+' : '-';
         expression->left = std::move(left);
         expression->right = std::move(right);
+        left = std::move(expression);
+    }
 
+    return left;
+}
+
+std::unique_ptr<Expression> Parser::parseMultiplicative()
+{
+    auto left = parsePower();
+
+    while (current().type == TokenType::Multiply || current().type == TokenType::Divide) {
+        const TokenType operation = consume().type;
+        auto right = parsePower();
+
+        auto expression = std::make_unique<Expression>();
+        expression->type = Expression::Type::Binary;
+        expression->operation = operation == TokenType::Multiply ? '*' : '/';
+        expression->left = std::move(left);
+        expression->right = std::move(right);
+        left = std::move(expression);
+    }
+
+    return left;
+}
+
+std::unique_ptr<Expression> Parser::parsePower()
+{
+    auto left = parsePrimary();
+
+    if (current().type == TokenType::Power) {
+        consume();
+        auto right = parsePower();
+
+        auto expression = std::make_unique<Expression>();
+        expression->type = Expression::Type::Binary;
+        expression->operation = '^';
+        expression->left = std::move(left);
+        expression->right = std::move(right);
         left = std::move(expression);
     }
 

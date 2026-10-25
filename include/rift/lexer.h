@@ -15,6 +15,10 @@ enum class TokenType
     Equal,
     ColonEqual,
     Plus,
+    Minus,
+	Multiply,
+	Divide,
+	Power,
 
     LeftParen,
     RightParen,
