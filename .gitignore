@@ -28,6 +28,7 @@ build/
 out/
 target/
 coverage/
+*.exe
 
 # Language/tool caches
 __pycache__/

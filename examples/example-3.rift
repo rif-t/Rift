@@ -1,0 +1,16 @@
+/*
+Formating your strings!
+Author: rif-t 25.10.2026 20:26 GMT+2:00
+*/
+
+func main() {
+
+    a : int = 2
+
+    b : string = "program" // Our string variable
+
+    println("The awesome {} with RIFT", b) // Formating puts b variable inside of {}
+
+    print("2+2*2={}",a+a*a) // Formating calculations
+
+}

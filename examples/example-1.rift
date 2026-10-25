@@ -1,0 +1,27 @@
+/*
+
+This example shows how integer data types works and some basic math operation
+Author: rif-t 25.10.2026 20:07 GMT+2:00
+
+*/
+
+func main(){
+
+    a : int = 1 // Creating integer variable with name a and assign value of 1
+
+    a = 2 // Assigning to variable a value of 2, so now its 2
+
+    println( a ) // Prints a to the console
+
+    println( a + 5 ) // Prints 7
+
+    println( a - 10 ) // Prints -8
+
+    println( a * 2 ) // Prints 4
+
+    println( a / 2 ) // Prints 1
+
+    println( a % 2 ) // Prints 0
+    
+
+}

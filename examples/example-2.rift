@@ -1,0 +1,42 @@
+/*
+Using logic in programs!
+Author: rif-t 25.10.2026 20:23 GMT+2:00
+*/
+
+func main(){
+
+    if 1<2 { // Our logic
+
+        println("1 is lesser then 2") // Our answer
+
+    }
+
+    b : bool = ( 3 % 2 == 0 ) // Bool variable, checking is 3 odd or even
+
+    if b { // Our bool variable
+
+        println("Even") // Wont be called
+
+    }else{
+
+        println("Odd") // Answer
+
+    }
+
+    s : int = 0 // Variable
+
+    if s>0{ // Greater then 0?
+
+        println("Possitive") // no
+
+    }elif s==0{ // 0?
+
+        println("Zero") //answer
+
+    }else{ // Just else
+
+        println("Negative") // no
+
+    }
+
+}

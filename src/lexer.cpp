@@ -68,6 +68,15 @@ std::vector<Token> Lexer::tokenize()
             else if (text == "false") {
                 tokens.push_back({ TokenType::False, text });
             }
+            else if (text == "and") {
+                tokens.push_back({ TokenType::And, text });
+            }
+            else if (text == "or") {
+                tokens.push_back({ TokenType::Or, text });
+            }
+            else if (text == "not") {
+                tokens.push_back({ TokenType::Not, text });
+            }
             else if (text == "int8" || text == "int16" || text == "int32" || text == "int64" || text == "int128" ||
                      text == "uint8" || text == "uint16" || text == "uint32" || text == "uint64" || text == "uint128") {
                 tokens.push_back({ TokenType::IntegerType, text });
@@ -198,7 +207,36 @@ std::vector<Token> Lexer::tokenize()
 
         // =
         if (c == '=') {
-            tokens.push_back({ TokenType::Equal, "=" });
+            advance();
+            if (current() == '=') { tokens.push_back({TokenType::EqualEqual, "=="}); advance(); }
+            else tokens.push_back({ TokenType::Equal, "=" });
+            continue;
+        }
+
+        if (c == '!') {
+            advance();
+            if (current() == '=') { tokens.push_back({TokenType::NotEqual, "!="}); advance(); }
+            else tokens.push_back({TokenType::Not, "!"});
+            continue;
+        }
+        if (c == '<' || c == '>') {
+            const char comparison = c;
+            advance();
+            const bool equal = current() == '=';
+            if (equal) advance();
+            tokens.push_back({comparison == '<' ? (equal ? TokenType::LessEqual : TokenType::Less) : (equal ? TokenType::GreaterEqual : TokenType::Greater), equal ? std::string(1, comparison) + "=" : std::string(1, comparison)});
+            continue;
+        }
+        if (c == '&' || c == '|') {
+            const char logical = c;
+            advance();
+            if (current() != logical) throw std::runtime_error("Use && for logical AND and || for logical OR");
+            advance();
+            tokens.push_back({logical == '&' ? TokenType::And : TokenType::Or, logical == '&' ? "&&" : "||"});
+            continue;
+        }
+        if (c == '?') {
+            tokens.push_back({TokenType::Question, "?"});
             advance();
             continue;
         }
@@ -240,7 +278,24 @@ std::vector<Token> Lexer::tokenize()
         // /
         if (c == '/') {
             advance();
-            if (current() == '=') { tokens.push_back({ TokenType::DivideEqual, "/=" }); advance(); }
+            if (current() == '/') {
+                while (position_ < source_.size() && current() != '\n') advance();
+            }
+            else if (current() == '*') {
+                advance();
+                std::size_t depth = 1;
+                while (position_ < source_.size() && depth > 0) {
+                    if (current() == '/' && position_ + 1 < source_.size() && source_[position_ + 1] == '*') {
+                        advance(); advance(); ++depth;
+                    } else if (current() == '*' && position_ + 1 < source_.size() && source_[position_ + 1] == '/') {
+                        advance(); advance(); --depth;
+                    } else {
+                        advance();
+                    }
+                }
+                if (depth != 0) throw std::runtime_error("Unterminated block comment");
+            }
+            else if (current() == '=') { tokens.push_back({ TokenType::DivideEqual, "/=" }); advance(); }
             else tokens.push_back({ TokenType::Divide, "/" });
             continue;
         }

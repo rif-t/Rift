@@ -58,13 +58,12 @@ WideInteger integerPower(WideInteger base, WideInteger exponent)
     return result;
 }
 
-WideInteger applyArithmetic(char operation, WideInteger a, WideInteger b)
+WideInteger applyArithmetic(const std::string& operation, WideInteger a, WideInteger b)
 {
-    switch (operation) {
-    case '+': return addIntegers(a, b);
-    case '-': return addIntegers(a, negate(b));
-    case '*': return multiplyIntegers(a, b);
-    case '/': {
+    if (operation == "+") return addIntegers(a, b);
+    if (operation == "-") return addIntegers(a, negate(b));
+    if (operation == "*") return multiplyIntegers(a, b);
+    if (operation == "/") {
         if (b.magnitude == UInt128{}) throw std::runtime_error("Division by zero");
         WideInteger result;
         UInt128 remainder{};
@@ -73,18 +72,59 @@ WideInteger applyArithmetic(char operation, WideInteger a, WideInteger b)
         result.isUnsigned = a.isUnsigned || b.isUnsigned;
         return result;
     }
-    case '%': {
+    if (operation == "%") {
         if (b.magnitude == UInt128{}) throw std::runtime_error("Remainder by zero");
         WideInteger result;
-        UInt128 quotient{};
-        result.magnitude = UInt128::divide(a.magnitude, b.magnitude, quotient);
+        UInt128 remainder{};
+        UInt128::divide(a.magnitude, b.magnitude, remainder);
+        result.magnitude = remainder;
         result.negative = a.negative;
         result.isUnsigned = a.isUnsigned || b.isUnsigned;
         return result;
     }
-    case '^': return integerPower(a, b);
-    default: throw std::runtime_error("Unknown operator");
+    if (operation == "^") return integerPower(a, b);
+    throw std::runtime_error("Unknown operator");
+}
+
+int compareIntegers(const WideInteger& a, const WideInteger& b)
+{
+    if (a.negative != b.negative) return a.negative ? -1 : 1;
+    if (a.magnitude == b.magnitude) return 0;
+    const int magnitudeOrder = a.magnitude < b.magnitude ? -1 : 1;
+    return a.negative ? -magnitudeOrder : magnitudeOrder;
+}
+
+bool compareValues(const RuntimeValue& left, const RuntimeValue& right, const std::string& operation)
+{
+    int order = 0;
+    bool comparable = true;
+    if (const auto* a = std::get_if<WideInteger>(&left)) {
+        if (const auto* b = std::get_if<WideInteger>(&right)) order = compareIntegers(*a, *b);
+        else comparable = false;
+    } else if (const auto* a = std::get_if<std::string>(&left)) {
+        if (const auto* b = std::get_if<std::string>(&right)) order = a->compare(*b);
+        else comparable = false;
+    } else if (const auto* a = std::get_if<char>(&left)) {
+        if (const auto* b = std::get_if<char>(&right)) order = *a == *b ? 0 : (*a < *b ? -1 : 1);
+        else comparable = false;
+    } else if (const auto* a = std::get_if<bool>(&left)) {
+        if (const auto* b = std::get_if<bool>(&right)) order = *a == *b ? 0 : (*a ? 1 : -1);
+        else comparable = false;
     }
+    if (operation == "==") return comparable && order == 0;
+    if (operation == "!=") return !comparable || order != 0;
+    if (!comparable || std::holds_alternative<bool>(left)) throw std::runtime_error("Values do not support ordered comparison");
+    if (operation == "<") return order < 0;
+    if (operation == "<=") return order <= 0;
+    if (operation == ">") return order > 0;
+    if (operation == ">=") return order >= 0;
+    throw std::runtime_error("Unknown comparison operator");
+}
+
+bool requireBoolean(const RuntimeValue& value, const std::string& context)
+{
+    if (const auto* boolean = std::get_if<bool>(&value)) return *boolean;
+    throw std::runtime_error(context + " must be bool");
 }
 
 RuntimeValue validateValue(RuntimeValue value, const std::string& type, const std::string& name)
@@ -143,7 +183,12 @@ void Interpreter::runFunction(const Function& function)
     const auto variableCount = std::count_if(function.statements.begin(), function.statements.end(), [](const Statement& s) { return s.type == Statement::Type::VariableDeclaration; });
     variables_.reserve(variableCount);
 
-    for (const auto& statement : function.statements) {
+    executeStatements(function.statements);
+}
+
+void Interpreter::executeStatements(const std::vector<Statement>& statements)
+{
+    for (const auto& statement : statements) {
         if (statement.type == Statement::Type::VariableDeclaration) {
             const auto& declaration = *statement.variable;
             RuntimeValue value = validateValue(evaluate(*declaration.value), declaration.type, declaration.name);
@@ -153,7 +198,7 @@ void Interpreter::runFunction(const Function& function)
             auto declaredType = variableTypes_.find(statement.name);
             if (declaredType == variableTypes_.end()) throw std::runtime_error("Cannot assign to undefined variable: " + statement.name);
             RuntimeValue value;
-            if (statement.operation == '=') {
+            if (statement.operation == "=") {
                 value = evaluate(*statement.expression);
             } else {
                 RuntimeValue currentValue = variables_.at(statement.name);
@@ -184,6 +229,16 @@ void Interpreter::runFunction(const Function& function)
                 for (const auto& value : values) output += stringify(value);
             }
             rift::fmt::write(output, statement.newline);
+        } else if (statement.type == Statement::Type::If) {
+            bool matched = false;
+            for (const auto& branch : statement.branches) {
+                if (requireBoolean(evaluate(*branch.condition), "if condition")) {
+                    executeStatements(branch.statements);
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) executeStatements(statement.elseStatements);
         }
     }
 }
@@ -204,13 +259,29 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
     }
     case Expression::Type::Unary: {
         RuntimeValue value = evaluate(*expression.left);
+        if (expression.operation == "!") return !requireBoolean(value, "Logical negation operand");
         if (!std::holds_alternative<WideInteger>(value)) throw std::runtime_error("Only integers can be negated");
         auto integer = std::get<WideInteger>(value);
         return negate(integer);
     }
     case Expression::Type::Binary: {
-        RuntimeValue l = evaluate(*expression.left), r = evaluate(*expression.right);
-        if (expression.operation == '+' &&
+        RuntimeValue l = evaluate(*expression.left);
+        if (expression.operation == "&&") {
+            const bool leftBool = requireBoolean(l, "Logical AND operand");
+            if (!leftBool) return false;
+            return requireBoolean(evaluate(*expression.right), "Logical AND operand");
+        }
+        if (expression.operation == "||") {
+            const bool leftBool = requireBoolean(l, "Logical OR operand");
+            if (leftBool) return true;
+            return requireBoolean(evaluate(*expression.right), "Logical OR operand");
+        }
+        RuntimeValue r = evaluate(*expression.right);
+        if (expression.operation == "==" || expression.operation == "!=" || expression.operation == "<" ||
+            expression.operation == "<=" || expression.operation == ">" || expression.operation == ">=") {
+            return compareValues(l, r, expression.operation);
+        }
+        if (expression.operation == "+" &&
             (std::holds_alternative<std::string>(l) || std::holds_alternative<char>(l)) &&
             (std::holds_alternative<std::string>(r) || std::holds_alternative<char>(r))) {
             return stringify(l) + stringify(r);
@@ -218,6 +289,10 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
         if (!std::holds_alternative<WideInteger>(l) || !std::holds_alternative<WideInteger>(r)) throw std::runtime_error("These values cannot be used with arithmetic operators");
         WideInteger a = std::get<WideInteger>(l), b = std::get<WideInteger>(r);
         return applyArithmetic(expression.operation, a, b);
+    }
+    case Expression::Type::Conditional: {
+        const bool condition = requireBoolean(evaluate(*expression.left), "Conditional expression condition");
+        return evaluate(condition ? *expression.right : *expression.third);
     }
     }
     throw std::runtime_error("Unknown expression");

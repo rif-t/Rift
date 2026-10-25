@@ -1,6 +1,0 @@
-func main() {
-    a : int = 2
-    b : string = "program"
-    println("The awesome {} with RIFT", b)
-    print("2+2*2={}",a+a*a)
-}

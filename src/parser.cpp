@@ -75,16 +75,9 @@ Function Parser::parseFunction()
 
     expect(TokenType::LeftParen);
     expect(TokenType::RightParen);
-    expect(TokenType::LeftBrace);
-
     Function function;
     function.name = name.text;
-
-    while (current().type != TokenType::RightBrace) {
-        function.statements.push_back(parseStatement());
-    }
-
-    expect(TokenType::RightBrace);
+    function.statements = parseBlock();
 
     return function;
 }
@@ -100,6 +93,7 @@ Statement Parser::parseStatement()
     if (current().text == "print" || current().text == "println") {
         return parsePrint();
     }
+    if (current().text == "if") return parseIf();
 
     if (peek().type == TokenType::Equal || peek().type == TokenType::PlusEqual ||
         peek().type == TokenType::MinusEqual || peek().type == TokenType::MultiplyEqual ||
@@ -111,15 +105,15 @@ Statement Parser::parseStatement()
         statement.name = consume().text;
         const TokenType op = consume().type;
         switch (op) {
-        case TokenType::Equal: statement.operation = '='; break;
-        case TokenType::PlusEqual: statement.operation = '+'; break;
-        case TokenType::MinusEqual: statement.operation = '-'; break;
-        case TokenType::MultiplyEqual: statement.operation = '*'; break;
-        case TokenType::DivideEqual: statement.operation = '/'; break;
-        case TokenType::RemainderEqual: statement.operation = '%'; break;
-        case TokenType::PowerEqual: statement.operation = '^'; break;
-        case TokenType::Increment: statement.operation = '+'; break;
-        case TokenType::Decrement: statement.operation = '-'; break;
+        case TokenType::Equal: statement.operation = "="; break;
+        case TokenType::PlusEqual: statement.operation = "+"; break;
+        case TokenType::MinusEqual: statement.operation = "-"; break;
+        case TokenType::MultiplyEqual: statement.operation = "*"; break;
+        case TokenType::DivideEqual: statement.operation = "/"; break;
+        case TokenType::RemainderEqual: statement.operation = "%"; break;
+        case TokenType::PowerEqual: statement.operation = "^"; break;
+        case TokenType::Increment: statement.operation = "+"; break;
+        case TokenType::Decrement: statement.operation = "-"; break;
         default: throw std::runtime_error("Invalid assignment operator");
         }
         if (op != TokenType::Increment && op != TokenType::Decrement) statement.expression = parseExpression();
@@ -133,6 +127,39 @@ Statement Parser::parseStatement()
         parseVariable()
     );
 
+    return statement;
+}
+
+std::vector<Statement> Parser::parseBlock()
+{
+    expect(TokenType::LeftBrace);
+    std::vector<Statement> statements;
+    while (current().type != TokenType::RightBrace) statements.push_back(parseStatement());
+    expect(TokenType::RightBrace);
+    return statements;
+}
+
+Statement Parser::parseIf()
+{
+    Statement statement;
+    statement.type = Statement::Type::If;
+    consume(); // if
+    auto parseCondition = [this]() {
+        const bool parenthesized = current().type == TokenType::LeftParen;
+        if (parenthesized) consume();
+        auto condition = parseExpression();
+        if (parenthesized) expect(TokenType::RightParen);
+        return condition;
+    };
+    statement.branches.push_back({parseCondition(), parseBlock()});
+    while (current().type == TokenType::Identifier && current().text == "elif") {
+        consume();
+        statement.branches.push_back({parseCondition(), parseBlock()});
+    }
+    if (current().type == TokenType::Identifier && current().text == "else") {
+        consume();
+        statement.elseStatements = parseBlock();
+    }
     return statement;
 }
 
@@ -191,7 +218,70 @@ VariableDeclaration Parser::parseVariable()
 
 std::unique_ptr<Expression> Parser::parseExpression()
 {
-    return parseAdditive();
+    return parseConditional();
+}
+
+std::unique_ptr<Expression> Parser::parseConditional()
+{
+    auto condition = parseLogicalOr();
+    if (current().type == TokenType::Question) {
+        consume();
+        auto whenTrue = parseExpression();
+        expect(TokenType::Colon);
+        auto whenFalse = parseConditional();
+        auto expression = std::make_unique<Expression>();
+        expression->type = Expression::Type::Conditional;
+        expression->left = std::move(condition);
+        expression->right = std::move(whenTrue);
+        expression->third = std::move(whenFalse);
+        return expression;
+    }
+    return condition;
+}
+
+std::unique_ptr<Expression> Parser::parseLogicalOr()
+{
+    auto left = parseLogicalAnd();
+    while (current().type == TokenType::Or) {
+        consume(); auto right = parseLogicalAnd();
+        auto expression = std::make_unique<Expression>(); expression->type = Expression::Type::Binary; expression->operation = "||";
+        expression->left = std::move(left); expression->right = std::move(right); left = std::move(expression);
+    }
+    return left;
+}
+
+std::unique_ptr<Expression> Parser::parseLogicalAnd()
+{
+    auto left = parseEquality();
+    while (current().type == TokenType::And) {
+        consume(); auto right = parseEquality();
+        auto expression = std::make_unique<Expression>(); expression->type = Expression::Type::Binary; expression->operation = "&&";
+        expression->left = std::move(left); expression->right = std::move(right); left = std::move(expression);
+    }
+    return left;
+}
+
+std::unique_ptr<Expression> Parser::parseEquality()
+{
+    auto left = parseComparison();
+    while (current().type == TokenType::EqualEqual || current().type == TokenType::NotEqual) {
+        const auto op = consume().type; auto right = parseComparison();
+        auto expression = std::make_unique<Expression>(); expression->type = Expression::Type::Binary; expression->operation = op == TokenType::EqualEqual ? "==" : "!=";
+        expression->left = std::move(left); expression->right = std::move(right); left = std::move(expression);
+    }
+    return left;
+}
+
+std::unique_ptr<Expression> Parser::parseComparison()
+{
+    auto left = parseAdditive();
+    while (current().type == TokenType::Less || current().type == TokenType::LessEqual || current().type == TokenType::Greater || current().type == TokenType::GreaterEqual) {
+        const auto op = consume().type; auto right = parseAdditive();
+        auto expression = std::make_unique<Expression>(); expression->type = Expression::Type::Binary;
+        expression->operation = op == TokenType::Less ? "<" : op == TokenType::LessEqual ? "<=" : op == TokenType::Greater ? ">" : ">=";
+        expression->left = std::move(left); expression->right = std::move(right); left = std::move(expression);
+    }
+    return left;
 }
 
 std::unique_ptr<Expression> Parser::parseAdditive()
@@ -204,7 +294,7 @@ std::unique_ptr<Expression> Parser::parseAdditive()
 
         auto expression = std::make_unique<Expression>();
         expression->type = Expression::Type::Binary;
-        expression->operation = operation == TokenType::Plus ? '+' : '-';
+        expression->operation = operation == TokenType::Plus ? "+" : "-";
         expression->left = std::move(left);
         expression->right = std::move(right);
         left = std::move(expression);
@@ -223,7 +313,7 @@ std::unique_ptr<Expression> Parser::parseMultiplicative()
 
         auto expression = std::make_unique<Expression>();
         expression->type = Expression::Type::Binary;
-        expression->operation = operation == TokenType::Multiply ? '*' : operation == TokenType::Divide ? '/' : '%';
+        expression->operation = operation == TokenType::Multiply ? "*" : operation == TokenType::Divide ? "/" : "%";
         expression->left = std::move(left);
         expression->right = std::move(right);
         left = std::move(expression);
@@ -242,7 +332,7 @@ std::unique_ptr<Expression> Parser::parsePower()
 
         auto expression = std::make_unique<Expression>();
         expression->type = Expression::Type::Binary;
-        expression->operation = '^';
+        expression->operation = "^";
         expression->left = std::move(left);
         expression->right = std::move(right);
         left = std::move(expression);
@@ -255,11 +345,11 @@ std::unique_ptr<Expression> Parser::parsePrimary()
 {
     const Token& token = current();
 
-    if (token.type == TokenType::Minus) {
+    if (token.type == TokenType::Minus || token.type == TokenType::Not) {
         consume();
         auto expression = std::make_unique<Expression>();
         expression->type = Expression::Type::Unary;
-        expression->operation = '-';
+        expression->operation = token.type == TokenType::Minus ? "-" : "!";
         expression->left = parsePrimary();
         return expression;
     }
@@ -272,6 +362,13 @@ std::unique_ptr<Expression> Parser::parsePrimary()
 
         consume();
 
+        return expression;
+    }
+
+    if (token.type == TokenType::LeftParen) {
+        consume();
+        auto expression = parseExpression();
+        expect(TokenType::RightParen);
         return expression;
     }
 
@@ -293,7 +390,7 @@ std::unique_ptr<Expression> Parser::parsePrimary()
 
     if (token.type == TokenType::True || token.type == TokenType::False) {
         auto expression = std::make_unique<Expression>();
-        expression->type = Expression::Type::Number;
+        expression->type = Expression::Type::Boolean;
         expression->value = token.type == TokenType::True;
         consume();
         return expression;

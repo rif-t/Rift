@@ -13,6 +13,7 @@ public:
 
 private:
     void runFunction(const Function& function);
+    void executeStatements(const std::vector<Statement>& statements);
 
     RuntimeValue evaluate(const Expression& expression);
 
