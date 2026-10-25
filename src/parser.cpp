@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 Parser::Parser(const std::vector<Token>& tokens)
@@ -50,15 +51,18 @@ Program Parser::parse()
     while (position_ < tokens_.size()) {
         if (current().type == TokenType::Using) {
             consume();
-            if (current().type != TokenType::Identifier || current().text != "std") {
-                throw std::runtime_error("Only the standard 'std' namespace is available");
-            }
-            consume();
+            if (current().type != TokenType::Identifier) throw std::runtime_error("Expected namespace name after 'using'");
+            std::string namespaceName = consume().text;
+            if (std::find(usingNamespaces_.begin(), usingNamespaces_.end(), namespaceName) == usingNamespaces_.end())
+                usingNamespaces_.push_back(namespaceName);
             if (current().type == TokenType::Semicolon) consume();
-            usingStd_ = true;
+            if (namespaceName == "std") usingStd_ = true;
         }
         else if (current().type == TokenType::Func) {
             program.functions.push_back(parseFunction());
+        }
+        else if (current().type == TokenType::NamespaceKeyword) {
+            parseNamespace(program);
         }
         else {
             throw std::runtime_error(
@@ -67,7 +71,29 @@ Program Parser::parse()
         }
     }
 
+    program.usingNamespaces = usingNamespaces_;
     return program;
+}
+
+void Parser::parseNamespace(Program& program)
+{
+    expect(TokenType::NamespaceKeyword);
+    if (current().type != TokenType::Identifier) throw std::runtime_error("Expected namespace name");
+    const std::string namespaceName = consume().text;
+    if (!currentNamespace_.empty()) throw std::runtime_error("Nested namespaces are not supported yet");
+    expect(TokenType::LeftBrace);
+    currentNamespace_ = namespaceName;
+    try {
+        while (current().type != TokenType::RightBrace) {
+            if (current().type != TokenType::Func) throw std::runtime_error("Namespaces can contain function declarations only");
+            program.functions.push_back(parseFunction());
+        }
+        expect(TokenType::RightBrace);
+    } catch (...) {
+        currentNamespace_.clear();
+        throw;
+    }
+    currentNamespace_.clear();
 }
 
 Function Parser::parseFunction()
@@ -84,7 +110,7 @@ Function Parser::parseFunction()
 
     expect(TokenType::LeftParen);
     Function function;
-    function.name = name.text;
+    function.name = currentNamespace_.empty() ? name.text : currentNamespace_ + "." + name.text;
     if (current().type != TokenType::RightParen) {
         do {
             if (current().type != TokenType::Identifier) throw std::runtime_error("Expected parameter name");
@@ -133,14 +159,13 @@ Statement Parser::parseStatement()
         );
     }
 
-    if (current().text == "std") {
-        if (peek().type != TokenType::Dot) throw std::runtime_error("Expected '.' after std");
+    if (current().text == "std" && peek().type == TokenType::Dot) {
         consume();
         consume();
-        if (current().type != TokenType::Identifier || (current().text != "print" && current().text != "println")) {
-            throw std::runtime_error("Unknown function in std namespace");
+        if (current().type == TokenType::Identifier && (current().text == "print" || current().text == "println")) {
+            return parsePrint();
         }
-        return parsePrint();
+        throw std::runtime_error("Unknown function in std namespace");
     }
     if (current().text == "print" || current().text == "println") {
         if (!usingStd_) throw std::runtime_error("Use 'std." + current().text + "(...)' or add 'using std;'");
@@ -148,7 +173,7 @@ Statement Parser::parseStatement()
     }
     if (current().text == "if") return parseIf();
 
-    if (peek().type == TokenType::LeftParen) {
+    if (peek().type == TokenType::LeftParen || peek().type == TokenType::Dot) {
         Statement statement;
         statement.type = Statement::Type::ExpressionStatement;
         statement.expression = parseExpression();

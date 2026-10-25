@@ -8,6 +8,7 @@ using namespace rift::runtime;
 void Interpreter::run(const Program& program)
 {
     functions_.clear();
+    usingNamespaces_ = program.usingNamespaces;
     for (const auto& function : program.functions) {
         if (!functions_.emplace(function.name, &function).second) throw std::runtime_error("Duplicate function: " + function.name);
     }
@@ -27,7 +28,16 @@ void Interpreter::runFunction(const Function& function)
 
 RuntimeValue Interpreter::callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments)
 {
-    const auto found = functions_.find(name);
+    auto found = functions_.find(name);
+    if (found == functions_.end() && name.find('.') == std::string::npos) {
+        for (const auto& namespaceName : usingNamespaces_) {
+            if (namespaceName == "std") continue;
+            auto candidate = functions_.find(namespaceName + "." + name);
+            if (candidate == functions_.end()) continue;
+            if (found != functions_.end()) throw std::runtime_error("Ambiguous function '" + name + "'; qualify it with its namespace");
+            found = candidate;
+        }
+    }
     if (found == functions_.end()) throw std::runtime_error("Undefined function: " + name);
     const Function& function = *found->second;
     if (arguments.size() != function.parameters.size()) {

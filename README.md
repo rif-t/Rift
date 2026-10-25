@@ -11,7 +11,7 @@ using directive. No package installation is needed.
 ## Your first program with RIFT
 
 ```rift
-using std;
+using std
 
 func main() {
     a : int = 2
@@ -26,7 +26,7 @@ func main() {
 Comparisons (`<`, `>`, `<=`, `>=`, `==`, `!=`) produce `bool` values. Boolean logic uses `&&`, `||`, `!` (or `and`, `or`, `not`) and short-circuits. Conditions can be written with or without parentheses; `elif` and `else` blocks are supported. The conditional expression `condition ? value : otherValue` selects a value.
 
 ```rift
-using std;
+using std
 
 score: int = 72
 passed: bool = score >= 50
@@ -47,7 +47,7 @@ Functions can take typed parameters and return a typed value. Calls can be used
 inside expressions and formatting arguments.
 
 ```rift
-using std;
+using std
 
 func is_passing(score: int) -> bool {
     return score >= 50
@@ -57,3 +57,25 @@ func main() {
     println(is_passing(72) ? "pass" : "retry")
 }
 ```
+
+## Namespaces
+
+Use namespaces to group functions. Call a function with its namespace name,
+or import that namespace with `using` to call its functions directly.
+
+```rift
+namespace some_math {
+    func double(value: int) -> int {
+        return value * 2
+    }
+}
+
+using std
+
+func main() {
+    println(some_math.double(21))
+}
+```
+
+With `using math;`, the same function can be called as `double(21)`. Namespace
+blocks currently contain functions and cannot be nested.

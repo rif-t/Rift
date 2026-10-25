@@ -56,6 +56,9 @@ std::vector<Token> Lexer::tokenize()
             else if (text == "return") {
                 tokens.push_back({ TokenType::Return, text });
             }
+            else if (text == "namespace") {
+                tokens.push_back({ TokenType::NamespaceKeyword, text });
+            }
             else if (text == "int") {
                 tokens.push_back({ TokenType::Int, text });
             }

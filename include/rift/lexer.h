@@ -13,6 +13,7 @@ enum class TokenType
     Func,
     Using,
     Return,
+    NamespaceKeyword,
     Int,
     Bool,
     StringType,

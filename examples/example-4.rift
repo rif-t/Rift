@@ -3,13 +3,17 @@ using std
 /*
 
 FUNCTIONS
-Author: rif-t 25.10.2026 20:54 GMT+2:00
+Author: rif-t 25.10.2026 21:11 GMT+2:00
 
 */
 
-func double(a : int) -> int { // Function that doubles input value
+namespace some_math { // Using with namespace
 
-    return a * 2
+    func double(value: int) -> int { // Function that doubles input value
+
+        return value * 2 // returning result
+
+    }
 
 }
 
@@ -21,13 +25,13 @@ func even(a : int) -> bool { // Function that check is number even
 
 func main(){ // Using functions
 
-    println(double(2)) // Doubling 2
+    println(some_math.double(2)) // Doubling 2
 
 
     println(even(1), ' ', even(2)) // Checking
 
 
-    n : int = double(100) // Assigning
+    n : int = some_math.double(100) // Assigning
     println(n) //Printing n
 
 }

@@ -3,6 +3,9 @@
 #include "ast.h"
 #include "lexer.h"
 
+#include <string>
+#include <vector>
+
 class Parser
 {
 public:
@@ -18,6 +21,7 @@ private:
     void expect(TokenType type);
 
     Function parseFunction();
+    void parseNamespace(Program& program);
     std::string parseType(bool allowVoid = false);
     Statement parseStatement();
     Statement parsePrint();
@@ -39,4 +43,6 @@ private:
     const std::vector<Token>& tokens_;
     size_t position_ = 0;
     bool usingStd_ = false;
+    std::string currentNamespace_;
+    std::vector<std::string> usingNamespaces_;
 };

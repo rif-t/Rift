@@ -21,4 +21,5 @@ private:
     std::unordered_map<std::string, RuntimeValue> variables_;
     std::unordered_map<std::string, std::string> variableTypes_;
     std::unordered_map<std::string, const Function*> functions_;
+    std::vector<std::string> usingNamespaces_;
 };

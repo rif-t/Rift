@@ -186,6 +186,11 @@ std::unique_ptr<Expression> Parser::parsePrimary()
         auto expression = std::make_unique<Expression>();
         expression->name = token.text;
         consume();
+        while (current().type == TokenType::Dot) {
+            consume();
+            if (current().type != TokenType::Identifier) throw std::runtime_error("Expected name after '.'");
+            expression->name += "." + consume().text;
+        }
         if (current().type == TokenType::LeftParen) {
             expression->type = Expression::Type::Call;
             consume();

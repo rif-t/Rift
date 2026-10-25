@@ -88,4 +88,5 @@ struct Function
 struct Program
 {
     std::vector<Function> functions;
+    std::vector<std::string> usingNamespaces;
 };
