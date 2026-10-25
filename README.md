@@ -40,3 +40,20 @@ if (passed) {
     println("try again")
 }
 ```
+
+## Functions
+
+Functions can take typed parameters and return a typed value. Calls can be used
+inside expressions and formatting arguments.
+
+```rift
+using std;
+
+func is_passing(score: int) -> bool {
+    return score >= 50
+}
+
+func main() {
+    println(is_passing(72) ? "pass" : "retry")
+}
+```

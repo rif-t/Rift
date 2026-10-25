@@ -18,6 +18,7 @@ private:
     void expect(TokenType type);
 
     Function parseFunction();
+    std::string parseType(bool allowVoid = false);
     Statement parseStatement();
     Statement parsePrint();
     Statement parseIf();

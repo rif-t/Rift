@@ -54,7 +54,7 @@ Program Parser::parse()
                 throw std::runtime_error("Only the standard 'std' namespace is available");
             }
             consume();
-            expect(TokenType::Semicolon);
+            if (current().type == TokenType::Semicolon) consume();
             usingStd_ = true;
         }
         else if (current().type == TokenType::Func) {
@@ -83,16 +83,50 @@ Function Parser::parseFunction()
     consume();
 
     expect(TokenType::LeftParen);
-    expect(TokenType::RightParen);
     Function function;
     function.name = name.text;
+    if (current().type != TokenType::RightParen) {
+        do {
+            if (current().type != TokenType::Identifier) throw std::runtime_error("Expected parameter name");
+            std::string parameterName = consume().text;
+            expect(TokenType::Colon);
+            function.parameters.emplace_back(std::move(parameterName), parseType());
+            if (current().type != TokenType::Comma) break;
+            consume();
+        } while (true);
+    }
+    expect(TokenType::RightParen);
+    if (current().type == TokenType::Arrow) {
+        consume();
+        function.returnType = parseType(true);
+    }
     function.statements = parseBlock();
 
     return function;
 }
 
+std::string Parser::parseType(bool allowVoid)
+{
+    const Token& type = current();
+    if (type.type != TokenType::Int && type.type != TokenType::IntegerType && type.type != TokenType::Bool &&
+        type.type != TokenType::StringType && type.type != TokenType::CharType &&
+        !(allowVoid && type.type == TokenType::VoidType)) {
+        throw std::runtime_error("Expected type");
+    }
+    consume();
+    return type.text;
+}
+
 Statement Parser::parseStatement()
 {
+    if (current().type == TokenType::Return) {
+        consume();
+        Statement statement;
+        statement.type = Statement::Type::Return;
+        if (current().type != TokenType::Semicolon && current().type != TokenType::RightBrace) statement.expression = parseExpression();
+        if (current().type == TokenType::Semicolon) consume();
+        return statement;
+    }
     if (current().type != TokenType::Identifier) {
         throw std::runtime_error(
             "Expected statement"
@@ -113,6 +147,13 @@ Statement Parser::parseStatement()
         return parsePrint();
     }
     if (current().text == "if") return parseIf();
+
+    if (peek().type == TokenType::LeftParen) {
+        Statement statement;
+        statement.type = Statement::Type::ExpressionStatement;
+        statement.expression = parseExpression();
+        return statement;
+    }
 
     if (peek().type == TokenType::Equal || peek().type == TokenType::PlusEqual ||
         peek().type == TokenType::MinusEqual || peek().type == TokenType::MultiplyEqual ||
@@ -213,14 +254,7 @@ VariableDeclaration Parser::parseVariable()
 
     expect(TokenType::Colon);
 
-    const Token& type = current();
-
-    if (type.type != TokenType::Int && type.type != TokenType::IntegerType && type.type != TokenType::Bool &&
-        type.type != TokenType::StringType && type.type != TokenType::CharType) {
-        throw std::runtime_error("Expected type");
-    }
-
-    consume();
+    const std::string type = parseType();
 
     expect(TokenType::Equal);
 
@@ -229,202 +263,8 @@ VariableDeclaration Parser::parseVariable()
     VariableDeclaration variable;
 
     variable.name = name.text;
-    variable.type = type.text;
+    variable.type = type;
     variable.value = std::move(value);
 
     return variable;
-}
-
-std::unique_ptr<Expression> Parser::parseExpression()
-{
-    return parseConditional();
-}
-
-std::unique_ptr<Expression> Parser::parseConditional()
-{
-    auto condition = parseLogicalOr();
-    if (current().type == TokenType::Question) {
-        consume();
-        auto whenTrue = parseExpression();
-        expect(TokenType::Colon);
-        auto whenFalse = parseConditional();
-        auto expression = std::make_unique<Expression>();
-        expression->type = Expression::Type::Conditional;
-        expression->left = std::move(condition);
-        expression->right = std::move(whenTrue);
-        expression->third = std::move(whenFalse);
-        return expression;
-    }
-    return condition;
-}
-
-std::unique_ptr<Expression> Parser::parseLogicalOr()
-{
-    auto left = parseLogicalAnd();
-    while (current().type == TokenType::Or) {
-        consume(); auto right = parseLogicalAnd();
-        auto expression = std::make_unique<Expression>(); expression->type = Expression::Type::Binary; expression->operation = "||";
-        expression->left = std::move(left); expression->right = std::move(right); left = std::move(expression);
-    }
-    return left;
-}
-
-std::unique_ptr<Expression> Parser::parseLogicalAnd()
-{
-    auto left = parseEquality();
-    while (current().type == TokenType::And) {
-        consume(); auto right = parseEquality();
-        auto expression = std::make_unique<Expression>(); expression->type = Expression::Type::Binary; expression->operation = "&&";
-        expression->left = std::move(left); expression->right = std::move(right); left = std::move(expression);
-    }
-    return left;
-}
-
-std::unique_ptr<Expression> Parser::parseEquality()
-{
-    auto left = parseComparison();
-    while (current().type == TokenType::EqualEqual || current().type == TokenType::NotEqual) {
-        const auto op = consume().type; auto right = parseComparison();
-        auto expression = std::make_unique<Expression>(); expression->type = Expression::Type::Binary; expression->operation = op == TokenType::EqualEqual ? "==" : "!=";
-        expression->left = std::move(left); expression->right = std::move(right); left = std::move(expression);
-    }
-    return left;
-}
-
-std::unique_ptr<Expression> Parser::parseComparison()
-{
-    auto left = parseAdditive();
-    while (current().type == TokenType::Less || current().type == TokenType::LessEqual || current().type == TokenType::Greater || current().type == TokenType::GreaterEqual) {
-        const auto op = consume().type; auto right = parseAdditive();
-        auto expression = std::make_unique<Expression>(); expression->type = Expression::Type::Binary;
-        expression->operation = op == TokenType::Less ? "<" : op == TokenType::LessEqual ? "<=" : op == TokenType::Greater ? ">" : ">=";
-        expression->left = std::move(left); expression->right = std::move(right); left = std::move(expression);
-    }
-    return left;
-}
-
-std::unique_ptr<Expression> Parser::parseAdditive()
-{
-    auto left = parseMultiplicative();
-
-    while (current().type == TokenType::Plus || current().type == TokenType::Minus) {
-        const TokenType operation = consume().type;
-        auto right = parseMultiplicative();
-
-        auto expression = std::make_unique<Expression>();
-        expression->type = Expression::Type::Binary;
-        expression->operation = operation == TokenType::Plus ? "+" : "-";
-        expression->left = std::move(left);
-        expression->right = std::move(right);
-        left = std::move(expression);
-    }
-
-    return left;
-}
-
-std::unique_ptr<Expression> Parser::parseMultiplicative()
-{
-    auto left = parsePower();
-
-    while (current().type == TokenType::Multiply || current().type == TokenType::Divide || current().type == TokenType::Remainder) {
-        const TokenType operation = consume().type;
-        auto right = parsePower();
-
-        auto expression = std::make_unique<Expression>();
-        expression->type = Expression::Type::Binary;
-        expression->operation = operation == TokenType::Multiply ? "*" : operation == TokenType::Divide ? "/" : "%";
-        expression->left = std::move(left);
-        expression->right = std::move(right);
-        left = std::move(expression);
-    }
-
-    return left;
-}
-
-std::unique_ptr<Expression> Parser::parsePower()
-{
-    auto left = parsePrimary();
-
-    if (current().type == TokenType::Power) {
-        consume();
-        auto right = parsePower();
-
-        auto expression = std::make_unique<Expression>();
-        expression->type = Expression::Type::Binary;
-        expression->operation = "^";
-        expression->left = std::move(left);
-        expression->right = std::move(right);
-        left = std::move(expression);
-    }
-
-    return left;
-}
-
-std::unique_ptr<Expression> Parser::parsePrimary()
-{
-    const Token& token = current();
-
-    if (token.type == TokenType::Minus || token.type == TokenType::Not) {
-        consume();
-        auto expression = std::make_unique<Expression>();
-        expression->type = Expression::Type::Unary;
-        expression->operation = token.type == TokenType::Minus ? "-" : "!";
-        expression->left = parsePrimary();
-        return expression;
-    }
-
-    if (token.type == TokenType::Number) {
-        auto expression = std::make_unique<Expression>();
-
-        expression->type = Expression::Type::Number;
-        expression->value = WideInteger{UInt128::parse(token.text), false, false};
-
-        consume();
-
-        return expression;
-    }
-
-    if (token.type == TokenType::LeftParen) {
-        consume();
-        auto expression = parseExpression();
-        expect(TokenType::RightParen);
-        return expression;
-    }
-
-    if (token.type == TokenType::StringLiteral) {
-        auto expression = std::make_unique<Expression>();
-        expression->type = Expression::Type::String;
-        expression->value = token.text;
-        consume();
-        return expression;
-    }
-
-    if (token.type == TokenType::CharacterLiteral) {
-        auto expression = std::make_unique<Expression>();
-        expression->type = Expression::Type::Character;
-        expression->value = token.text[0];
-        consume();
-        return expression;
-    }
-
-    if (token.type == TokenType::True || token.type == TokenType::False) {
-        auto expression = std::make_unique<Expression>();
-        expression->type = Expression::Type::Boolean;
-        expression->value = token.type == TokenType::True;
-        consume();
-        return expression;
-    }
-
-    if (token.type == TokenType::Identifier) {
-        auto expression = std::make_unique<Expression>();
-
-        expression->type = Expression::Type::Identifier;
-        expression->name = token.text;
-
-        consume();
-
-        return expression;
-    }
-
-    throw std::runtime_error("Expected expression");
 }

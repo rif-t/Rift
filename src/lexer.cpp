@@ -53,6 +53,9 @@ std::vector<Token> Lexer::tokenize()
             else if (text == "using") {
                 tokens.push_back({ TokenType::Using, text });
             }
+            else if (text == "return") {
+                tokens.push_back({ TokenType::Return, text });
+            }
             else if (text == "int") {
                 tokens.push_back({ TokenType::Int, text });
             }
@@ -64,6 +67,9 @@ std::vector<Token> Lexer::tokenize()
             }
             else if (text == "char") {
                 tokens.push_back({ TokenType::CharType, text });
+            }
+            else if (text == "void") {
+                tokens.push_back({ TokenType::VoidType, text });
             }
             else if (text == "true") {
                 tokens.push_back({ TokenType::True, text });
@@ -272,7 +278,8 @@ std::vector<Token> Lexer::tokenize()
         // -
         if (c == '-') {
             advance();
-            if (current() == '-') { tokens.push_back({ TokenType::Decrement, "--" }); advance(); }
+            if (current() == '>') { tokens.push_back({TokenType::Arrow, "->"}); advance(); }
+            else if (current() == '-') { tokens.push_back({ TokenType::Decrement, "--" }); advance(); }
             else if (current() == '=') { tokens.push_back({ TokenType::MinusEqual, "-=" }); advance(); }
             else tokens.push_back({ TokenType::Minus, "-" });
             continue;

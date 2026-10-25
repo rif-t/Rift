@@ -1,172 +1,16 @@
 #include "interpreter.h"
-#include "fmt.h"
+#include "interpreter_internal.h"
 
-#include <algorithm>
-#include <iostream>
 #include <stdexcept>
 
-namespace {
-WideInteger addIntegers(WideInteger a, WideInteger b)
-{
-    WideInteger result;
-    result.isUnsigned = a.isUnsigned || b.isUnsigned;
-    if (result.isUnsigned && (a.negative || b.negative)) throw std::runtime_error("Cannot mix negative and unsigned integer values");
-    if (a.negative == b.negative) {
-        bool overflow = false;
-        result.magnitude = UInt128::add(a.magnitude, b.magnitude, overflow);
-        if (overflow) throw std::runtime_error("128-bit integer overflow");
-        result.negative = a.negative;
-    } else if (a.magnitude < b.magnitude) {
-        result.magnitude = UInt128::subtract(b.magnitude, a.magnitude);
-        result.negative = b.negative;
-    } else {
-        result.magnitude = UInt128::subtract(a.magnitude, b.magnitude);
-        result.negative = a.negative;
-    }
-    if (result.isUnsigned && result.negative) throw std::runtime_error("Cannot produce a negative unsigned integer");
-    return result;
-}
-
-WideInteger negate(WideInteger value)
-{
-    if (!(value.magnitude == UInt128{})) value.negative = !value.negative;
-    return value;
-}
-
-WideInteger multiplyIntegers(WideInteger a, WideInteger b)
-{
-    WideInteger result;
-    bool overflow = false;
-    result.magnitude = UInt128::multiply(a.magnitude, b.magnitude, overflow);
-    if (overflow) throw std::runtime_error("128-bit integer overflow");
-    result.negative = a.negative != b.negative;
-    result.isUnsigned = a.isUnsigned || b.isUnsigned;
-    if (result.isUnsigned && result.negative) throw std::runtime_error("Cannot produce a negative unsigned integer");
-    return result;
-}
-
-WideInteger integerPower(WideInteger base, WideInteger exponent)
-{
-    if (exponent.negative) throw std::runtime_error("Exponent must be non-negative for integer values");
-    WideInteger result{UInt128{0, 1}, false, base.isUnsigned || exponent.isUnsigned};
-    while (!(exponent.magnitude == UInt128{})) {
-        if (exponent.magnitude.low & 1) result = multiplyIntegers(result, base);
-        UInt128 remainder{};
-        exponent.magnitude = UInt128::divide(exponent.magnitude, {0, 2}, remainder);
-        if (!(exponent.magnitude == UInt128{})) base = multiplyIntegers(base, base);
-    }
-    return result;
-}
-
-WideInteger applyArithmetic(const std::string& operation, WideInteger a, WideInteger b)
-{
-    if (operation == "+") return addIntegers(a, b);
-    if (operation == "-") return addIntegers(a, negate(b));
-    if (operation == "*") return multiplyIntegers(a, b);
-    if (operation == "/") {
-        if (b.magnitude == UInt128{}) throw std::runtime_error("Division by zero");
-        WideInteger result;
-        UInt128 remainder{};
-        result.magnitude = UInt128::divide(a.magnitude, b.magnitude, remainder);
-        result.negative = a.negative != b.negative;
-        result.isUnsigned = a.isUnsigned || b.isUnsigned;
-        return result;
-    }
-    if (operation == "%") {
-        if (b.magnitude == UInt128{}) throw std::runtime_error("Remainder by zero");
-        WideInteger result;
-        UInt128 remainder{};
-        UInt128::divide(a.magnitude, b.magnitude, remainder);
-        result.magnitude = remainder;
-        result.negative = a.negative;
-        result.isUnsigned = a.isUnsigned || b.isUnsigned;
-        return result;
-    }
-    if (operation == "^") return integerPower(a, b);
-    throw std::runtime_error("Unknown operator");
-}
-
-int compareIntegers(const WideInteger& a, const WideInteger& b)
-{
-    if (a.negative != b.negative) return a.negative ? -1 : 1;
-    if (a.magnitude == b.magnitude) return 0;
-    const int magnitudeOrder = a.magnitude < b.magnitude ? -1 : 1;
-    return a.negative ? -magnitudeOrder : magnitudeOrder;
-}
-
-bool compareValues(const RuntimeValue& left, const RuntimeValue& right, const std::string& operation)
-{
-    int order = 0;
-    bool comparable = true;
-    if (const auto* a = std::get_if<WideInteger>(&left)) {
-        if (const auto* b = std::get_if<WideInteger>(&right)) order = compareIntegers(*a, *b);
-        else comparable = false;
-    } else if (const auto* a = std::get_if<std::string>(&left)) {
-        if (const auto* b = std::get_if<std::string>(&right)) order = a->compare(*b);
-        else comparable = false;
-    } else if (const auto* a = std::get_if<char>(&left)) {
-        if (const auto* b = std::get_if<char>(&right)) order = *a == *b ? 0 : (*a < *b ? -1 : 1);
-        else comparable = false;
-    } else if (const auto* a = std::get_if<bool>(&left)) {
-        if (const auto* b = std::get_if<bool>(&right)) order = *a == *b ? 0 : (*a ? 1 : -1);
-        else comparable = false;
-    }
-    if (operation == "==") return comparable && order == 0;
-    if (operation == "!=") return !comparable || order != 0;
-    if (!comparable || std::holds_alternative<bool>(left)) throw std::runtime_error("Values do not support ordered comparison");
-    if (operation == "<") return order < 0;
-    if (operation == "<=") return order <= 0;
-    if (operation == ">") return order > 0;
-    if (operation == ">=") return order >= 0;
-    throw std::runtime_error("Unknown comparison operator");
-}
-
-bool requireBoolean(const RuntimeValue& value, const std::string& context)
-{
-    if (const auto* boolean = std::get_if<bool>(&value)) return *boolean;
-    throw std::runtime_error(context + " must be bool");
-}
-
-RuntimeValue validateValue(RuntimeValue value, const std::string& type, const std::string& name)
-{
-    if (type == "string") {
-        if (!std::holds_alternative<std::string>(value)) throw std::runtime_error("Value for '" + name + "' must be string");
-        return value;
-    }
-    if (type == "char") {
-        if (!std::holds_alternative<char>(value)) throw std::runtime_error("Value for '" + name + "' must be char");
-        return value;
-    }
-    if (type == "bool") {
-        if (!std::holds_alternative<bool>(value)) throw std::runtime_error("Value for '" + name + "' must be bool");
-        return value;
-    }
-    if (!std::holds_alternative<WideInteger>(value)) throw std::runtime_error("Value for '" + name + "' must be an integer");
-    auto integer = std::get<WideInteger>(value);
-    const bool isUnsigned = type.starts_with("uint");
-    if (integer.negative && isUnsigned) throw std::runtime_error("Unsigned integer cannot be negative");
-    if (!integerFitsType(integer, type)) throw std::runtime_error("Value for '" + name + "' is outside the range of " + type);
-    integer.isUnsigned = isUnsigned;
-    return integer;
-}
-
-std::string stringify(const RuntimeValue& value)
-{
-    if (const auto* integer = std::get_if<WideInteger>(&value)) return integer->toString();
-    if (const auto* boolean = std::get_if<bool>(&value)) return *boolean ? "true" : "false";
-    if (const auto* string = std::get_if<std::string>(&value)) return *string;
-    return std::string(1, std::get<char>(value));
-}
-
-rift::fmt::Argument formatArgument(const RuntimeValue& value)
-{
-    if (const auto* integer = std::get_if<WideInteger>(&value)) return {integer->toString(), true, *integer};
-    return {stringify(value), false, {}};
-}
-}
+using namespace rift::runtime;
 
 void Interpreter::run(const Program& program)
 {
+    functions_.clear();
+    for (const auto& function : program.functions) {
+        if (!functions_.emplace(function.name, &function).second) throw std::runtime_error("Duplicate function: " + function.name);
+    }
     for (const auto& function : program.functions) {
         if (function.name == "main") {
             runFunction(function);
@@ -178,12 +22,57 @@ void Interpreter::run(const Program& program)
 
 void Interpreter::runFunction(const Function& function)
 {
+    callFunction(function.name, {});
+}
+
+RuntimeValue Interpreter::callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments)
+{
+    const auto found = functions_.find(name);
+    if (found == functions_.end()) throw std::runtime_error("Undefined function: " + name);
+    const Function& function = *found->second;
+    if (arguments.size() != function.parameters.size()) {
+        throw std::runtime_error("Function '" + name + "' expects " + std::to_string(function.parameters.size()) + " argument(s)");
+    }
+
+    auto previousVariables = std::move(variables_);
+    auto previousTypes = std::move(variableTypes_);
     variables_.clear();
     variableTypes_.clear();
-    const auto variableCount = std::count_if(function.statements.begin(), function.statements.end(), [](const Statement& s) { return s.type == Statement::Type::VariableDeclaration; });
-    variables_.reserve(variableCount);
-
-    executeStatements(function.statements);
+    try {
+        for (std::size_t i = 0; i < arguments.size(); ++i) {
+            const auto& [parameterName, parameterType] = function.parameters[i];
+            variables_[parameterName] = validateValue(arguments[i], parameterType, parameterName);
+            variableTypes_[parameterName] = parameterType;
+        }
+        executeStatements(function.statements);
+        if (!function.returnType.empty() && function.returnType != "void") {
+            throw std::runtime_error("Function '" + name + "' completed without returning a value");
+        }
+        variables_ = std::move(previousVariables);
+        variableTypes_ = std::move(previousTypes);
+        return std::monostate{};
+    } catch (const ReturnSignal& signal) {
+        RuntimeValue result = std::monostate{};
+        try {
+            if (function.returnType.empty() || function.returnType == "void") {
+                if (signal.value) throw std::runtime_error("Void function '" + name + "' cannot return a value");
+            } else {
+                if (!signal.value) throw std::runtime_error("Function '" + name + "' must return a value of type " + function.returnType);
+                result = validateValue(*signal.value, function.returnType, "return value");
+            }
+        } catch (...) {
+            variables_ = std::move(previousVariables);
+            variableTypes_ = std::move(previousTypes);
+            throw;
+        }
+        variables_ = std::move(previousVariables);
+        variableTypes_ = std::move(previousTypes);
+        return result;
+    } catch (...) {
+        variables_ = std::move(previousVariables);
+        variableTypes_ = std::move(previousTypes);
+        throw;
+    }
 }
 
 void Interpreter::executeStatements(const std::vector<Statement>& statements)
@@ -239,61 +128,12 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 }
             }
             if (!matched) executeStatements(statement.elseStatements);
+        } else if (statement.type == Statement::Type::Return) {
+            ReturnSignal signal;
+            if (statement.expression) signal.value = evaluate(*statement.expression);
+            throw signal;
+        } else if (statement.type == Statement::Type::ExpressionStatement) {
+            evaluate(*statement.expression);
         }
     }
-}
-
-RuntimeValue Interpreter::evaluate(const Expression& expression)
-{
-    switch (expression.type) {
-    case Expression::Type::Number:
-        return expression.value;
-    case Expression::Type::String:
-        return expression.value;
-    case Expression::Type::Character:
-        return expression.value;
-    case Expression::Type::Identifier: {
-        auto it = variables_.find(expression.name);
-        if (it == variables_.end()) throw std::runtime_error("Undefined variable: " + expression.name);
-        return it->second;
-    }
-    case Expression::Type::Unary: {
-        RuntimeValue value = evaluate(*expression.left);
-        if (expression.operation == "!") return !requireBoolean(value, "Logical negation operand");
-        if (!std::holds_alternative<WideInteger>(value)) throw std::runtime_error("Only integers can be negated");
-        auto integer = std::get<WideInteger>(value);
-        return negate(integer);
-    }
-    case Expression::Type::Binary: {
-        RuntimeValue l = evaluate(*expression.left);
-        if (expression.operation == "&&") {
-            const bool leftBool = requireBoolean(l, "Logical AND operand");
-            if (!leftBool) return false;
-            return requireBoolean(evaluate(*expression.right), "Logical AND operand");
-        }
-        if (expression.operation == "||") {
-            const bool leftBool = requireBoolean(l, "Logical OR operand");
-            if (leftBool) return true;
-            return requireBoolean(evaluate(*expression.right), "Logical OR operand");
-        }
-        RuntimeValue r = evaluate(*expression.right);
-        if (expression.operation == "==" || expression.operation == "!=" || expression.operation == "<" ||
-            expression.operation == "<=" || expression.operation == ">" || expression.operation == ">=") {
-            return compareValues(l, r, expression.operation);
-        }
-        if (expression.operation == "+" &&
-            (std::holds_alternative<std::string>(l) || std::holds_alternative<char>(l)) &&
-            (std::holds_alternative<std::string>(r) || std::holds_alternative<char>(r))) {
-            return stringify(l) + stringify(r);
-        }
-        if (!std::holds_alternative<WideInteger>(l) || !std::holds_alternative<WideInteger>(r)) throw std::runtime_error("These values cannot be used with arithmetic operators");
-        WideInteger a = std::get<WideInteger>(l), b = std::get<WideInteger>(r);
-        return applyArithmetic(expression.operation, a, b);
-    }
-    case Expression::Type::Conditional: {
-        const bool condition = requireBoolean(evaluate(*expression.left), "Conditional expression condition");
-        return evaluate(condition ? *expression.right : *expression.third);
-    }
-    }
-    throw std::runtime_error("Unknown expression");
 }

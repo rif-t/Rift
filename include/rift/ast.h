@@ -4,9 +4,10 @@
 #include "integer.h"
 #include <string>
 #include <variant>
+#include <utility>
 #include <vector>
 
-using RuntimeValue = std::variant<WideInteger, bool, std::string, char>;
+using RuntimeValue = std::variant<WideInteger, bool, std::string, char, std::monostate>;
 
 struct Expression
 {
@@ -19,7 +20,8 @@ struct Expression
         Identifier,
         Unary,
         Binary,
-        Conditional
+        Conditional,
+        Call
     };
 
     Type type;
@@ -32,6 +34,7 @@ struct Expression
     std::unique_ptr<Expression> left;
     std::unique_ptr<Expression> right;
     std::unique_ptr<Expression> third;
+    std::vector<std::unique_ptr<Expression>> arguments;
 };
 
 struct VariableDeclaration
@@ -57,7 +60,9 @@ struct Statement
         VariableDeclaration,
         Assignment,
         Print,
-        If
+        If,
+        Return,
+        ExpressionStatement
     };
 
     Type type;
@@ -75,6 +80,8 @@ struct Statement
 struct Function
 {
     std::string name;
+    std::vector<std::pair<std::string, std::string>> parameters;
+    std::string returnType;
     std::vector<Statement> statements;
 };
 

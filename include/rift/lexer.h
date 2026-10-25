@@ -12,10 +12,12 @@ enum class TokenType
 
     Func,
     Using,
+    Return,
     Int,
     Bool,
     StringType,
     CharType,
+    VoidType,
     IntegerType,
     True,
     False,
@@ -51,6 +53,7 @@ enum class TokenType
     Or,
     Not,
     Question,
+    Arrow,
 
     LeftParen,
     RightParen,

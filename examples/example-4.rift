@@ -1,0 +1,33 @@
+using std
+
+/*
+
+FUNCTIONS
+Author: rif-t 25.10.2026 20:54 GMT+2:00
+
+*/
+
+func double(a : int) -> int { // Function that doubles input value
+
+    return a * 2
+
+}
+
+func even(a : int) -> bool { // Function that check is number even
+
+    return (a%2==0 ? true : false)
+
+}
+
+func main(){ // Using functions
+
+    println(double(2)) // Doubling 2
+
+
+    println(even(1), ' ', even(2)) // Checking
+
+
+    n : int = double(100) // Assigning
+    println(n) //Printing n
+
+}
