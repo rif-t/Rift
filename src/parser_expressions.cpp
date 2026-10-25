@@ -131,6 +131,16 @@ std::unique_ptr<Expression> Parser::parsePrimary()
 {
     const Token& token = current();
 
+    if (token.type == TokenType::Int || token.type == TokenType::IntegerType || token.type == TokenType::Bool ||
+        token.type == TokenType::StringType || token.type == TokenType::CharType || token.type == TokenType::VoidType ||
+        (token.type == TokenType::Identifier && (token.text == "float" || token.text == "double" || token.text == "decimal" || token.text == "any"))) {
+        auto expression = std::make_unique<Expression>();
+        expression->type = Expression::Type::TypeName;
+        expression->name = token.text;
+        consume();
+        return expression;
+    }
+
     if (token.type == TokenType::Minus || token.type == TokenType::Not) {
         consume();
         auto expression = std::make_unique<Expression>();
@@ -163,7 +173,7 @@ std::unique_ptr<Expression> Parser::parsePrimary()
     if (token.type == TokenType::StringLiteral) {
         auto expression = std::make_unique<Expression>();
         expression->type = Expression::Type::String;
-        expression->value = token.text;
+        expression->value = utf8ToUtf16(token.text);
         consume();
         return expression;
     }
@@ -171,7 +181,9 @@ std::unique_ptr<Expression> Parser::parsePrimary()
     if (token.type == TokenType::CharacterLiteral) {
         auto expression = std::make_unique<Expression>();
         expression->type = Expression::Type::Character;
-        expression->value = token.text[0];
+        auto character = utf8ToUtf16(token.text);
+        if (character.size() != 1) throw std::runtime_error("UTF-16 char literal must contain exactly one code unit");
+        expression->value = character[0];
         consume();
         return expression;
     }

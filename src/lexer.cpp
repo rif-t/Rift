@@ -166,10 +166,22 @@ std::vector<Token> Lexer::tokenize()
                 case '0': ch = '\0'; break;
                 default: throw std::runtime_error("Unknown character escape sequence");
                 }
+                value.assign(1, ch);
+            } else {
+                value += ch;
+                if (static_cast<unsigned char>(ch) >= 0x80) {
+                    const unsigned char lead = static_cast<unsigned char>(ch);
+                    const unsigned continuation = (lead & 0xe0) == 0xc0 ? 1 : (lead & 0xf0) == 0xe0 ? 2 : (lead & 0xf8) == 0xf0 ? 3 : 0;
+                    if (continuation == 0) throw std::runtime_error("Invalid UTF-8 character literal");
+                    for (unsigned i = 0; i < continuation; ++i) {
+                        if (position_ >= source_.size()) throw std::runtime_error("Truncated UTF-8 character literal");
+                        value += current(); advance();
+                    }
+                }
             }
             if (current() != '\'') throw std::runtime_error("Character literal must contain exactly one character");
             advance();
-            tokens.push_back({TokenType::CharacterLiteral, std::string(1, ch)});
+            tokens.push_back({TokenType::CharacterLiteral, value});
             continue;
         }
 

@@ -129,3 +129,32 @@ func identity(value: any) -> any {
     return value
 }
 ```
+
+## `std.types`
+
+The standard `std.types` module provides type sizes, numeric limits, string
+conversion, checked integer conversions, floating-point conversions, and type
+queries. Integer sizes are language-defined; `float`, `double`, and `decimal`
+are reported as 4, 8, and 16 bytes. `sizeof` accepts either a type name or a
+variable and reports sizes in bytes. Rift `string` values use UTF-16 storage;
+`char` is one UTF-16 code unit. `min_value`/`max_value` also cover bool and char;
+for string they report the minimum and maximum supported UTF-16 code-unit length.
+
+```rift
+using std;
+
+func main() {
+    value: int16 = 120
+    println("{} bytes, max {}", std.types.size_of(value), std.types.max_value(int16))
+    println(std.types.to_string(value))
+    println(std.types.to_int8(12))
+    println(std.types.type_of(value), " ", std.types.is_numeric(value))
+}
+```
+
+Available conversions include `to_int8` through `to_int128`, `to_uint8` through
+`to_uint128`, `to_int` (the `int32` alias), `to_uint` (the `uint32` alias),
+`to_float`, `to_double`, and `to_decimal`. Integer conversions check the target
+range; fractional inputs are truncated toward zero. Type queries include
+`type_of` (also spelled `typeof`), `size_of` (also spelled `sizeof`),
+`is_integer`, `is_numeric`, and `is_bool`.

@@ -11,8 +11,8 @@ std::string inferType(const RuntimeValue& value)
     if (std::holds_alternative<WideInteger>(value)) return "int";
     if (std::holds_alternative<long double>(value)) return "double";
     if (std::holds_alternative<bool>(value)) return "bool";
-    if (std::holds_alternative<std::string>(value)) return "string";
-    if (std::holds_alternative<char>(value)) return "char";
+    if (std::holds_alternative<std::u16string>(value)) return "string";
+    if (std::holds_alternative<char16_t>(value)) return "char";
     throw std::runtime_error("Cannot infer a type from a void value");
 }
 }
@@ -138,11 +138,11 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
             values.reserve(statement.arguments.size());
             for (const auto& argument : statement.arguments) values.push_back(evaluate(*argument));
             std::string output;
-            if (!values.empty() && std::holds_alternative<std::string>(values.front())) {
+            if (!values.empty() && std::holds_alternative<std::u16string>(values.front())) {
                 std::vector<rift::fmt::Argument> formatArguments;
                 formatArguments.reserve(values.size() - 1);
                 for (std::size_t i = 1; i < values.size(); ++i) formatArguments.push_back(formatArgument(values[i]));
-                output = rift::fmt::format(std::get<std::string>(values.front()), formatArguments);
+                output = rift::fmt::format(utf16ToUtf8(std::get<std::u16string>(values.front())), formatArguments);
             } else {
                 for (const auto& value : values) output += stringify(value);
             }

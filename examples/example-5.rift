@@ -1,11 +1,17 @@
 using std
+using std.types
 
 /*
 
 Working with different data types
-Author: rift-t 25.10.2026 25:25 GMT+2:00
+Author: rift-t 25.10.2026 22:05 GMT+2:00
 
 */
+func gh(a: any){
+
+    println("Type: {}, size in bits: {}, min value: {}, max value: {}",type_of(a), size_of(a)*8, min_value(a), max_value(a))
+
+}
 
 func main(){
 
@@ -14,5 +20,31 @@ func main(){
     c := "Hey" // := means that this variable's data type will be automatically choosen
     
     const pi : decimal= 3.141 // const means that you cant change variable by the time program runs
+    //pi *= 2 -Error
+
+    d : int128 = 170141183460469231731687303715884105727 // The number after int means number of bits we are using for this variable, currently available: (8, 16, 32, 64, 128)
+
+    gh(int8)
+    gh(uint8)
+    gh(int16)
+    gh(uint16)
+    gh(int32)
+    gh(uint32)
+    gh(int64)
+    gh(uint64)
+    gh(int128)
+    gh(uint128)
+    gh(float)
+    gh(double)
+    gh(decimal)
+    gh(bool)
+    gh(char)
+
+    str : string = "123423"
+    gh(str)
+
+    e : uint32 = 36435645 // The 'u' before int32 means that this variable will only use numbers that 0<=
+
+
 
 }

@@ -166,13 +166,13 @@ Statement Parser::parseStatement()
         );
     }
 
-    if (current().text == "std" && peek().type == TokenType::Dot) {
-        consume();
-        consume();
-        if (current().type == TokenType::Identifier && (current().text == "print" || current().text == "println")) {
+    if (current().text == "std" && peek().type == TokenType::Dot && position_ + 2 < tokens_.size() &&
+        tokens_[position_ + 2].type == TokenType::Identifier &&
+        (tokens_[position_ + 2].text == "print" || tokens_[position_ + 2].text == "println")) {
+        consume(); consume();
+        if (current().type == TokenType::Identifier) {
             return parsePrint();
         }
-        throw std::runtime_error("Unknown function in std namespace");
     }
     if (current().text == "print" || current().text == "println") {
         if (!usingStd_) throw std::runtime_error("Use 'std." + current().text + "(...)' or add 'using std;'");
@@ -302,8 +302,8 @@ VariableDeclaration Parser::parseVariable()
         expect(TokenType::Colon);
         variable.type = parseType();
     }
-    if (current().type == TokenType::Equal) {
-        consume();
+    if (current().type == TokenType::Equal || inferred) {
+        if (current().type == TokenType::Equal) consume();
         do {
             variable.values.push_back(parseExpression());
             if (current().type != TokenType::Comma) break;

@@ -1,9 +1,117 @@
 #include "interpreter.h"
 #include "interpreter_internal.h"
 
+#include <cmath>
+#include <algorithm>
+#include <iomanip>
+#include <limits>
+#include <sstream>
 #include <stdexcept>
 
 using namespace rift::runtime;
+
+namespace {
+WideInteger integerFromBits(unsigned bits, bool isUnsigned, bool negative = false, bool maximum = true)
+{
+    WideInteger value;
+    value.isUnsigned = isUnsigned;
+    if (isUnsigned && !maximum) return value;
+    value.negative = negative && !isUnsigned;
+    if (bits == 128) {
+        if (isUnsigned) value.magnitude = {UINT64_MAX, UINT64_MAX};
+        else value.magnitude = negative ? UInt128{UINT64_C(1) << 63, 0} : UInt128{(UINT64_C(1) << 63) - 1, UINT64_MAX};
+    } else if (bits == 64) {
+        if (isUnsigned) value.magnitude.low = UINT64_MAX;
+        else value.magnitude.low = negative ? (UINT64_C(1) << 63) : (UINT64_C(1) << 63) - 1;
+    } else {
+        const unsigned magnitudeBits = isUnsigned ? bits : bits - 1;
+        value.magnitude.low = (UINT64_C(1) << magnitudeBits) - (maximum ? 1 : 0);
+    }
+    return value;
+}
+
+std::string valueType(const RuntimeValue& value)
+{
+    if (std::holds_alternative<WideInteger>(value)) return std::get<WideInteger>(value).isUnsigned ? "uint128" : "int";
+    if (std::holds_alternative<long double>(value)) return "double";
+    if (std::holds_alternative<bool>(value)) return "bool";
+    if (std::holds_alternative<std::u16string>(value)) return "string";
+    if (std::holds_alternative<char16_t>(value)) return "char";
+    return "void";
+}
+
+std::size_t typeSize(const std::string& type)
+{
+    if (type == "bool" || type == "int8" || type == "uint8") return 1;
+    if (type == "char") return 2;
+    if (type == "int16" || type == "uint16") return 2;
+    if (type == "int" || type == "int32" || type == "uint32" || type == "float") return 4;
+    if (type == "int64" || type == "uint64" || type == "double") return 8;
+    if (type == "int128" || type == "uint128" || type == "decimal") return 16;
+    if (type == "string") return 8; // logical string handle; payload is separately allocated
+    throw std::runtime_error("std.types.sizeof does not support type '" + type + "'");
+}
+
+RuntimeValue typeBuiltin(const std::string& name, const std::vector<RuntimeValue>& args)
+{
+    const auto requireCount = [&args, &name](std::size_t count) {
+        if (args.size() != count) throw std::runtime_error("std.types." + name + " expects " + std::to_string(count) + " argument(s)");
+    };
+    const auto requireType = [&args]() -> std::string {
+        if (!std::holds_alternative<std::string>(args[0])) throw std::runtime_error("Expected a type name or string");
+        return std::get<std::string>(args[0]);
+    };
+    if (name == "to_string") { requireCount(1); return utf8ToUtf16(stringify(args[0])); }
+    if (name == "type_of" || name == "typeof") { requireCount(1); return valueType(args[0]); }
+    if (name == "is_integer") { requireCount(1); return std::holds_alternative<WideInteger>(args[0]); }
+    if (name == "is_numeric") { requireCount(1); return std::holds_alternative<WideInteger>(args[0]) || std::holds_alternative<long double>(args[0]); }
+    if (name == "is_bool") { requireCount(1); return std::holds_alternative<bool>(args[0]); }
+    if (name == "size_of" || name == "sizeof") {
+        requireCount(1);
+        const std::string type = std::holds_alternative<std::string>(args[0]) ? requireType() : valueType(args[0]);
+        return WideInteger{UInt128{0, typeSize(type)}, false, true};
+    }
+    if (name == "max_value" || name == "min_value") {
+        requireCount(1);
+        const std::string type = std::holds_alternative<std::string>(args[0]) ? requireType() : valueType(args[0]);
+        if (type == "bool") return name == "max_value";
+        if (type == "char") return WideInteger{UInt128{0, name == "max_value" ? 0xffffu : 0u}, false, true};
+        if (type == "string") return WideInteger{UInt128{0, name == "max_value" ? UINT32_MAX : 0u}, false, true};
+        if (type == "float") return name == "max_value" ? static_cast<long double>(std::numeric_limits<float>::max()) : -static_cast<long double>(std::numeric_limits<float>::max());
+        if (type == "double") return name == "max_value" ? static_cast<long double>(std::numeric_limits<double>::max()) : -static_cast<long double>(std::numeric_limits<double>::max());
+        if (type == "decimal") return name == "max_value" ? std::numeric_limits<long double>::max() : std::numeric_limits<long double>::lowest();
+        bool isUnsigned = type.starts_with("uint");
+        if (type == "int") return integerFromBits(32, false, name == "min_value", name == "max_value");
+        if (type != "uint8" && type != "uint16" && type != "uint32" && type != "uint64" && type != "uint128" &&
+            type != "int8" && type != "int16" && type != "int32" && type != "int64" && type != "int128")
+            throw std::runtime_error("Unknown numeric type: " + type);
+        const unsigned bits = static_cast<unsigned>(std::stoi(type.substr(isUnsigned ? 4 : 3)));
+        return integerFromBits(bits, isUnsigned, name == "min_value", name == "max_value");
+    }
+    if (name.starts_with("to_uint") || name.starts_with("to_int")) {
+        requireCount(1);
+        const std::string type = name == "to_int" ? "int" : name == "to_uint" ? "uint32" : name.substr(3);
+        RuntimeValue source = args[0];
+        if (std::holds_alternative<long double>(source)) {
+            const long double number = std::trunc(std::get<long double>(source));
+            if (!std::isfinite(number) || number < -1.7014118346046923e38L || number > 3.4028236692093846e38L)
+                throw std::runtime_error("Numeric conversion is outside the 128-bit integer range");
+            std::ostringstream text; text << std::fixed << std::setprecision(0) << number;
+            const std::string digits = text.str();
+            const bool negative = !digits.empty() && digits[0] == '-';
+            WideInteger integer{UInt128::parse(negative ? digits.substr(1) : digits), negative, false};
+            source = integer;
+        }
+        return validateValue(std::move(source), type, "conversion");
+    }
+    if (name == "to_float" || name == "to_double" || name == "to_decimal") {
+        requireCount(1);
+        const std::string type = name.substr(3);
+        return validateValue(args[0], type, "conversion");
+    }
+    throw std::runtime_error("Unknown std.types function: " + name);
+}
+}
 
 RuntimeValue Interpreter::evaluate(const Expression& expression)
 {
@@ -16,6 +124,8 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
         return expression.value;
     case Expression::Type::Boolean:
         return expression.value;
+    case Expression::Type::TypeName:
+        return expression.name;
     case Expression::Type::Identifier: {
         for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
             auto it = scope->find(expression.name);
@@ -52,9 +162,13 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
             return compareValues(l, r, expression.operation);
         }
         if (expression.operation == "+" &&
-            (std::holds_alternative<std::string>(l) || std::holds_alternative<char>(l)) &&
-            (std::holds_alternative<std::string>(r) || std::holds_alternative<char>(r))) {
-            return stringify(l) + stringify(r);
+            (std::holds_alternative<std::u16string>(l) || std::holds_alternative<char16_t>(l)) &&
+            (std::holds_alternative<std::u16string>(r) || std::holds_alternative<char16_t>(r))) {
+            const auto toUtf16 = [](const RuntimeValue& value) {
+                if (const auto* string = std::get_if<std::u16string>(&value)) return *string;
+                return std::u16string(1, std::get<char16_t>(value));
+            };
+            return toUtf16(l) + toUtf16(r);
         }
         if ((std::holds_alternative<long double>(l) || std::holds_alternative<WideInteger>(l)) &&
             (std::holds_alternative<long double>(r) || std::holds_alternative<WideInteger>(r)) &&
@@ -78,6 +192,51 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
         return evaluate(condition ? *expression.right : *expression.third);
     }
     case Expression::Type::Call: {
+        std::string builtinName;
+        const std::string explicitPrefix = "std.types.";
+            if (expression.name.starts_with(explicitPrefix)) {
+            builtinName = expression.name.substr(explicitPrefix.size());
+        } else if (expression.name.starts_with("types.") &&
+                   std::find(usingNamespaces_.begin(), usingNamespaces_.end(), "std") != usingNamespaces_.end()) {
+            builtinName = expression.name.substr(6);
+        } else if (expression.name.find('.') == std::string::npos &&
+                   std::find(usingNamespaces_.begin(), usingNamespaces_.end(), "std.types") != usingNamespaces_.end()) {
+            static const std::vector<std::string> typeFunctions = {
+                "size_of", "sizeof", "max_value", "min_value", "to_string", "type_of", "typeof", "is_integer", "is_numeric", "is_bool",
+                "to_int8", "to_int16", "to_int32", "to_int64", "to_int128", "to_uint8", "to_uint16", "to_uint32", "to_uint64", "to_uint128",
+                "to_int", "to_uint", "to_float", "to_double", "to_decimal"
+            };
+            if (std::find(typeFunctions.begin(), typeFunctions.end(), expression.name) != typeFunctions.end()) builtinName = expression.name;
+        }
+        if (!builtinName.empty()) {
+            std::vector<RuntimeValue> arguments;
+            arguments.reserve(expression.arguments.size());
+            const bool inspectVariableType = (builtinName == "size_of" || builtinName == "sizeof" || builtinName == "type_of" || builtinName == "typeof") &&
+                expression.arguments.size() == 1 &&
+                expression.arguments[0]->type == Expression::Type::Identifier;
+            if (inspectVariableType) {
+                const auto& variableName = expression.arguments[0]->name;
+                bool foundVariable = false;
+                for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+                    auto variable = scope->find(variableName);
+                    if (variable != scope->end()) {
+                        if (std::holds_alternative<std::monostate>(variable->second.value))
+                            throw std::runtime_error("Variable used before initialization: " + variableName);
+                        if (variable->second.type == "any") arguments.push_back(variable->second.value);
+                        else arguments.emplace_back(variable->second.type);
+                        foundVariable = true;
+                        break;
+                    }
+                }
+                if (!foundVariable) arguments.push_back(evaluate(*expression.arguments[0]));
+            } else {
+                for (const auto& argument : expression.arguments) arguments.push_back(evaluate(*argument));
+            }
+            if ((builtinName == "type_of" || builtinName == "typeof") && inspectVariableType && !arguments.empty() &&
+                std::holds_alternative<std::string>(arguments[0])) return arguments[0];
+            RuntimeValue result = typeBuiltin(builtinName, arguments);
+            return result;
+        }
         std::vector<RuntimeValue> arguments;
         arguments.reserve(expression.arguments.size());
         for (const auto& argument : expression.arguments) arguments.push_back(evaluate(*argument));

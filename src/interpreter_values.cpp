@@ -112,11 +112,11 @@ bool compareValues(const RuntimeValue& left, const RuntimeValue& right, const st
             order = aValue == *bFloat ? 0 : (aValue < *bFloat ? -1 : 1);
         }
         else comparable = false;
-    } else if (const auto* a = std::get_if<std::string>(&left)) {
-        if (const auto* b = std::get_if<std::string>(&right)) order = a->compare(*b);
+    } else if (const auto* a = std::get_if<std::u16string>(&left)) {
+        if (const auto* b = std::get_if<std::u16string>(&right)) order = a->compare(*b);
         else comparable = false;
-    } else if (const auto* a = std::get_if<char>(&left)) {
-        if (const auto* b = std::get_if<char>(&right)) order = *a == *b ? 0 : (*a < *b ? -1 : 1);
+    } else if (const auto* a = std::get_if<char16_t>(&left)) {
+        if (const auto* b = std::get_if<char16_t>(&right)) order = *a == *b ? 0 : (*a < *b ? -1 : 1);
         else comparable = false;
     } else if (const auto* a = std::get_if<bool>(&left)) {
         if (const auto* b = std::get_if<bool>(&right)) order = *a == *b ? 0 : (*a ? 1 : -1);
@@ -147,11 +147,11 @@ RuntimeValue validateValue(RuntimeValue value, const std::string& type, const st
         return value;
     }
     if (type == "string") {
-        if (!std::holds_alternative<std::string>(value)) throw std::runtime_error("Value for '" + name + "' must be string");
+        if (!std::holds_alternative<std::u16string>(value)) throw std::runtime_error("Value for '" + name + "' must be string");
         return value;
     }
     if (type == "char") {
-        if (!std::holds_alternative<char>(value)) throw std::runtime_error("Value for '" + name + "' must be char");
+        if (!std::holds_alternative<char16_t>(value)) throw std::runtime_error("Value for '" + name + "' must be char");
         return value;
     }
     if (type == "bool") {
@@ -172,8 +172,9 @@ std::string stringify(const RuntimeValue& value)
     if (const auto* integer = std::get_if<WideInteger>(&value)) return integer->toString();
     if (const auto* decimal = std::get_if<long double>(&value)) { std::ostringstream output; output << std::setprecision(std::numeric_limits<long double>::digits10 + 1) << *decimal; return output.str(); }
     if (const auto* boolean = std::get_if<bool>(&value)) return *boolean ? "true" : "false";
-    if (const auto* string = std::get_if<std::string>(&value)) return *string;
-    if (const auto* character = std::get_if<char>(&value)) return std::string(1, *character);
+    if (const auto* typeName = std::get_if<std::string>(&value)) return *typeName;
+    if (const auto* string = std::get_if<std::u16string>(&value)) return utf16ToUtf8(*string);
+    if (const auto* character = std::get_if<char16_t>(&value)) return utf16ToUtf8(std::u16string(1, *character));
     throw std::runtime_error("Void function has no printable value");
 }
 
