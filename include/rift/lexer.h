@@ -10,6 +10,10 @@ enum class TokenType
 
     Func,
     Int,
+    Bool,
+    IntegerType,
+    True,
+    False,
 
     Colon,
     Equal,

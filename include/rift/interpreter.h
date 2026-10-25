@@ -3,6 +3,7 @@
 #include "ast.h"
 
 #include <string>
+#include <variant>
 #include <unordered_map>
 
 class Interpreter
@@ -13,7 +14,7 @@ public:
 private:
     void runFunction(const Function& function);
 
-    int evaluate(const Expression& expression);
+    RuntimeValue evaluate(const Expression& expression);
 
-    std::unordered_map<std::string, int> variables_;
+    std::unordered_map<std::string, RuntimeValue> variables_;
 };

@@ -134,7 +134,7 @@ VariableDeclaration Parser::parseVariable()
 
     const Token& type = current();
 
-    if (type.type != TokenType::Int) {
+    if (type.type != TokenType::Int && type.type != TokenType::IntegerType && type.type != TokenType::Bool) {
         throw std::runtime_error("Expected type");
     }
 
@@ -223,10 +223,18 @@ std::unique_ptr<Expression> Parser::parsePrimary()
         auto expression = std::make_unique<Expression>();
 
         expression->type = Expression::Type::Number;
-        expression->value = std::stoi(token.text);
+        expression->value = static_cast<std::int64_t>(std::stoll(token.text));
 
         consume();
 
+        return expression;
+    }
+
+    if (token.type == TokenType::True || token.type == TokenType::False) {
+        auto expression = std::make_unique<Expression>();
+        expression->type = Expression::Type::Number;
+        expression->value = token.type == TokenType::True;
+        consume();
         return expression;
     }
 

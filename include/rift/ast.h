@@ -2,7 +2,10 @@
 
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
+
+using RuntimeValue = std::variant<std::int64_t, std::uint64_t, bool>;
 
 struct Expression
 {
@@ -15,7 +18,7 @@ struct Expression
 
     Type type;
 
-    int value = 0;
+    RuntimeValue value = std::int64_t{0};
     std::string name;
 
     char operation = '\0';

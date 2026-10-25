@@ -1,9 +1,12 @@
 func main() {
 
-    x : int = 1 + 2
+    x : int128 = 1 + 2
 
-    y : int = 20
+    y : int128 = 20
+
+    a : bool = false
 
     print(x-y)
+    print(a)
 
 }

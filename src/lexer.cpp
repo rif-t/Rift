@@ -52,6 +52,19 @@ std::vector<Token> Lexer::tokenize()
             else if (text == "int") {
                 tokens.push_back({ TokenType::Int, text });
             }
+            else if (text == "bool") {
+                tokens.push_back({ TokenType::Bool, text });
+            }
+            else if (text == "true") {
+                tokens.push_back({ TokenType::True, text });
+            }
+            else if (text == "false") {
+                tokens.push_back({ TokenType::False, text });
+            }
+            else if (text == "int8" || text == "int16" || text == "int32" || text == "int64" || text == "int128" ||
+                     text == "uint8" || text == "uint16" || text == "uint32" || text == "uint64" || text == "uint128") {
+                tokens.push_back({ TokenType::IntegerType, text });
+            }
             else {
                 tokens.push_back({ TokenType::Identifier, text });
             }
