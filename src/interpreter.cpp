@@ -56,6 +56,50 @@ WideInteger integerPower(WideInteger base, WideInteger exponent)
     }
     return result;
 }
+
+WideInteger applyArithmetic(char operation, WideInteger a, WideInteger b)
+{
+    switch (operation) {
+    case '+': return addIntegers(a, b);
+    case '-': return addIntegers(a, negate(b));
+    case '*': return multiplyIntegers(a, b);
+    case '/': {
+        if (b.magnitude == UInt128{}) throw std::runtime_error("Division by zero");
+        WideInteger result;
+        UInt128 remainder{};
+        result.magnitude = UInt128::divide(a.magnitude, b.magnitude, remainder);
+        result.negative = a.negative != b.negative;
+        result.isUnsigned = a.isUnsigned || b.isUnsigned;
+        return result;
+    }
+    case '%': {
+        if (b.magnitude == UInt128{}) throw std::runtime_error("Remainder by zero");
+        WideInteger result;
+        UInt128 quotient{};
+        result.magnitude = UInt128::divide(a.magnitude, b.magnitude, quotient);
+        result.negative = a.negative;
+        result.isUnsigned = a.isUnsigned || b.isUnsigned;
+        return result;
+    }
+    case '^': return integerPower(a, b);
+    default: throw std::runtime_error("Unknown operator");
+    }
+}
+
+RuntimeValue validateValue(RuntimeValue value, const std::string& type, const std::string& name)
+{
+    if (type == "bool") {
+        if (!std::holds_alternative<bool>(value)) throw std::runtime_error("Value for '" + name + "' must be bool");
+        return value;
+    }
+    if (std::holds_alternative<bool>(value)) throw std::runtime_error("Value for '" + name + "' must be an integer");
+    auto integer = std::get<WideInteger>(value);
+    const bool isUnsigned = type.starts_with("uint");
+    if (integer.negative && isUnsigned) throw std::runtime_error("Unsigned integer cannot be negative");
+    if (!integerFitsType(integer, type)) throw std::runtime_error("Value for '" + name + "' is outside the range of " + type);
+    integer.isUnsigned = isUnsigned;
+    return integer;
+}
 }
 
 void Interpreter::run(const Program& program)
@@ -72,25 +116,37 @@ void Interpreter::run(const Program& program)
 void Interpreter::runFunction(const Function& function)
 {
     variables_.clear();
+    variableTypes_.clear();
     const auto variableCount = std::count_if(function.statements.begin(), function.statements.end(), [](const Statement& s) { return s.type == Statement::Type::VariableDeclaration; });
     variables_.reserve(variableCount);
 
     for (const auto& statement : function.statements) {
         if (statement.type == Statement::Type::VariableDeclaration) {
             const auto& declaration = *statement.variable;
-            RuntimeValue value = evaluate(*declaration.value);
-            if (declaration.type == "bool") {
-                if (!std::holds_alternative<bool>(value)) throw std::runtime_error("Value for '" + declaration.name + "' must be bool");
-            } else {
-                if (std::holds_alternative<bool>(value)) throw std::runtime_error("Value for '" + declaration.name + "' must be an integer");
-                auto integer = std::get<WideInteger>(value);
-                const bool isUnsigned = declaration.type.starts_with("uint");
-                if (integer.negative && isUnsigned) throw std::runtime_error("Unsigned integer cannot be negative");
-                if (!integerFitsType(integer, declaration.type)) throw std::runtime_error("Value for '" + declaration.name + "' is outside the range of " + declaration.type);
-                integer.isUnsigned = isUnsigned;
-                value = integer;
-            }
+            RuntimeValue value = validateValue(evaluate(*declaration.value), declaration.type, declaration.name);
             variables_[declaration.name] = value;
+            variableTypes_[declaration.name] = declaration.type;
+        } else if (statement.type == Statement::Type::Assignment) {
+            auto declaredType = variableTypes_.find(statement.name);
+            if (declaredType == variableTypes_.end()) throw std::runtime_error("Cannot assign to undefined variable: " + statement.name);
+            RuntimeValue value;
+            if (statement.operation == '=') {
+                value = evaluate(*statement.expression);
+            } else {
+                RuntimeValue currentValue = variables_.at(statement.name);
+                if (std::holds_alternative<bool>(currentValue)) throw std::runtime_error("Boolean variables do not support compound arithmetic assignment");
+                WideInteger right;
+                if (statement.expression) {
+                    RuntimeValue evaluated = evaluate(*statement.expression);
+                    if (std::holds_alternative<bool>(evaluated)) throw std::runtime_error("Boolean values cannot be used with arithmetic operators");
+                    right = std::get<WideInteger>(evaluated);
+                } else {
+                    right = WideInteger{UInt128{0, 1}, false, false};
+                }
+                value = applyArithmetic(statement.operation, std::get<WideInteger>(currentValue), right);
+            }
+            value = validateValue(std::move(value), declaredType->second, statement.name);
+            variables_[statement.name] = value;
         } else if (statement.type == Statement::Type::Print) {
             RuntimeValue value = evaluate(*statement.expression);
             if (const auto* boolean = std::get_if<bool>(&value)) std::cout << (*boolean ? "true" : "false") << '\n';
@@ -119,22 +175,7 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
         RuntimeValue l = evaluate(*expression.left), r = evaluate(*expression.right);
         if (std::holds_alternative<bool>(l) || std::holds_alternative<bool>(r)) throw std::runtime_error("Boolean values cannot be used with arithmetic operators");
         WideInteger a = std::get<WideInteger>(l), b = std::get<WideInteger>(r);
-        switch (expression.operation) {
-        case '+': return addIntegers(a, b);
-        case '-': return addIntegers(a, negate(b));
-        case '*': return multiplyIntegers(a, b);
-        case '/': {
-            if (b.magnitude == UInt128{}) throw std::runtime_error("Division by zero");
-            WideInteger result;
-            UInt128 remainder{};
-            result.magnitude = UInt128::divide(a.magnitude, b.magnitude, remainder);
-            result.negative = a.negative != b.negative;
-            result.isUnsigned = a.isUnsigned || b.isUnsigned;
-            return result;
-        }
-        case '^': return integerPower(a, b);
-        default: throw std::runtime_error("Unknown operator");
-        }
+        return applyArithmetic(expression.operation, a, b);
     }
     }
     throw std::runtime_error("Unknown expression");

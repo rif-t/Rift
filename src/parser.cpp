@@ -16,6 +16,14 @@ const Token& Parser::current() const
     return tokens_[position_];
 }
 
+const Token& Parser::peek() const
+{
+    if (position_ + 1 >= tokens_.size()) {
+        throw std::runtime_error("Unexpected end of file");
+    }
+    return tokens_[position_ + 1];
+}
+
 const Token& Parser::consume()
 {
     const Token& token = current();
@@ -91,6 +99,31 @@ Statement Parser::parseStatement()
 
     if (current().text == "print") {
         return parsePrint();
+    }
+
+    if (peek().type == TokenType::Equal || peek().type == TokenType::PlusEqual ||
+        peek().type == TokenType::MinusEqual || peek().type == TokenType::MultiplyEqual ||
+        peek().type == TokenType::DivideEqual || peek().type == TokenType::RemainderEqual ||
+        peek().type == TokenType::PowerEqual || peek().type == TokenType::Increment ||
+        peek().type == TokenType::Decrement) {
+        Statement statement;
+        statement.type = Statement::Type::Assignment;
+        statement.name = consume().text;
+        const TokenType op = consume().type;
+        switch (op) {
+        case TokenType::Equal: statement.operation = '='; break;
+        case TokenType::PlusEqual: statement.operation = '+'; break;
+        case TokenType::MinusEqual: statement.operation = '-'; break;
+        case TokenType::MultiplyEqual: statement.operation = '*'; break;
+        case TokenType::DivideEqual: statement.operation = '/'; break;
+        case TokenType::RemainderEqual: statement.operation = '%'; break;
+        case TokenType::PowerEqual: statement.operation = '^'; break;
+        case TokenType::Increment: statement.operation = '+'; break;
+        case TokenType::Decrement: statement.operation = '-'; break;
+        default: throw std::runtime_error("Invalid assignment operator");
+        }
+        if (op != TokenType::Increment && op != TokenType::Decrement) statement.expression = parseExpression();
+        return statement;
     }
 
     Statement statement;
@@ -181,13 +214,13 @@ std::unique_ptr<Expression> Parser::parseMultiplicative()
 {
     auto left = parsePower();
 
-    while (current().type == TokenType::Multiply || current().type == TokenType::Divide) {
+    while (current().type == TokenType::Multiply || current().type == TokenType::Divide || current().type == TokenType::Remainder) {
         const TokenType operation = consume().type;
         auto right = parsePower();
 
         auto expression = std::make_unique<Expression>();
         expression->type = Expression::Type::Binary;
-        expression->operation = operation == TokenType::Multiply ? '*' : '/';
+        expression->operation = operation == TokenType::Multiply ? '*' : operation == TokenType::Divide ? '/' : '%';
         expression->left = std::move(left);
         expression->right = std::move(right);
         left = std::move(expression);

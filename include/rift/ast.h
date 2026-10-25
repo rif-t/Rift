@@ -42,12 +42,15 @@ struct Statement
     enum class Type
     {
         VariableDeclaration,
+        Assignment,
         Print
     };
 
     Type type;
 
     std::unique_ptr<VariableDeclaration> variable;
+    std::string name;
+    char operation = '=';
     std::unique_ptr<Expression> expression;
 };
 

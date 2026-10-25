@@ -17,4 +17,5 @@ private:
     RuntimeValue evaluate(const Expression& expression);
 
     std::unordered_map<std::string, RuntimeValue> variables_;
+    std::unordered_map<std::string, std::string> variableTypes_;
 };

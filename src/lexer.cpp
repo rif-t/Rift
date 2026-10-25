@@ -139,15 +139,19 @@ std::vector<Token> Lexer::tokenize()
 
         // +
         if (c == '+') {
-            tokens.push_back({ TokenType::Plus, "+" });
             advance();
+            if (current() == '+') { tokens.push_back({ TokenType::Increment, "++" }); advance(); }
+            else if (current() == '=') { tokens.push_back({ TokenType::PlusEqual, "+=" }); advance(); }
+            else tokens.push_back({ TokenType::Plus, "+" });
             continue;
         }
 
         // -
         if (c == '-') {
-            tokens.push_back({ TokenType::Minus, "-" });
             advance();
+            if (current() == '-') { tokens.push_back({ TokenType::Decrement, "--" }); advance(); }
+            else if (current() == '=') { tokens.push_back({ TokenType::MinusEqual, "-=" }); advance(); }
+            else tokens.push_back({ TokenType::Minus, "-" });
             continue;
         }
 
@@ -159,6 +163,7 @@ std::vector<Token> Lexer::tokenize()
                 tokens.push_back({ TokenType::Power, "**" });
                 advance();
             }
+            else if (current() == '=') { tokens.push_back({ TokenType::MultiplyEqual, "*=" }); advance(); }
             else {
                 tokens.push_back({ TokenType::Multiply, "*" });
             }
@@ -168,8 +173,23 @@ std::vector<Token> Lexer::tokenize()
 
         // /
         if (c == '/') {
-            tokens.push_back({ TokenType::Divide, "/" });
             advance();
+            if (current() == '=') { tokens.push_back({ TokenType::DivideEqual, "/=" }); advance(); }
+            else tokens.push_back({ TokenType::Divide, "/" });
+            continue;
+        }
+
+        if (c == '%') {
+            advance();
+            if (current() == '=') { tokens.push_back({ TokenType::RemainderEqual, "%=" }); advance(); }
+            else tokens.push_back({ TokenType::Remainder, "%" });
+            continue;
+        }
+
+        if (c == '^') {
+            advance();
+            if (current() == '=') { tokens.push_back({ TokenType::PowerEqual, "^=" }); advance(); }
+            else tokens.push_back({ TokenType::Power, "^" });
             continue;
         }
 

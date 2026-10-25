@@ -12,6 +12,7 @@ public:
 
 private:
     const Token& current() const;
+    const Token& peek() const;
     const Token& consume();
 
     void expect(TokenType type);

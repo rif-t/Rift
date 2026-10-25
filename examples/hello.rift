@@ -1,12 +1,21 @@
 func main() {
 
-    x : int128 = 1 + 2
+    q : int8 = 8
+    w : int16 = 1024
+    e : int32=4321
+    r:int64=35435
+    t :int128 = 2353456326236
 
-    y : int128 = 20
+    b : bool =true
 
-    a : bool = false
+    q--
+    w++
+    e+=2
+    r%=10
+    t^=2
 
-    print(x-y)
+    a : int64 = r/10
+
     print(a)
 
 }
