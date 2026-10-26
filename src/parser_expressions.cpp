@@ -153,10 +153,17 @@ std::unique_ptr<Expression> Parser::parsePrimary()
     if (token.type == TokenType::Number) {
         auto expression = std::make_unique<Expression>();
         expression->type = Expression::Type::Number;
-        if (token.text.find('.') != std::string::npos) {
-            try { expression->value = std::stold(token.text); }
-            catch (...) { throw std::runtime_error("Invalid floating-point literal: " + token.text); }
-        } else expression->value = WideInteger{UInt128::parse(token.text), false, false};
+        const char suffix = token.text.empty() ? '\0' : token.text.back();
+        const bool typedFloat = suffix == 'f' || suffix == 'F';
+        const bool typedDouble = suffix == 'd' || suffix == 'D';
+        const bool typedDecimal = suffix == 'm' || suffix == 'M';
+        const std::string number = typedFloat || typedDouble || typedDecimal ? token.text.substr(0, token.text.size() - 1) : token.text;
+        try {
+            if (typedFloat) expression->value = std::stof(number);
+            else if (typedDecimal) expression->value = Decimal::parse(number);
+            else if (typedDouble || number.find('.') != std::string::npos) expression->value = std::stod(number);
+            else expression->value = WideInteger{UInt128::parse(number), false, false};
+        } catch (...) { throw std::runtime_error("Invalid numeric literal: " + token.text); }
 
         consume();
 

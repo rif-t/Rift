@@ -10,7 +10,9 @@ namespace {
 std::string inferType(const RuntimeValue& value)
 {
     if (std::holds_alternative<WideInteger>(value)) return "int";
-    if (std::holds_alternative<long double>(value)) return "double";
+    if (std::holds_alternative<float>(value)) return "float";
+    if (std::holds_alternative<double>(value)) return "double";
+    if (std::holds_alternative<Decimal>(value)) return "decimal";
     if (std::holds_alternative<bool>(value)) return "bool";
     if (std::holds_alternative<std::u16string>(value)) return "string";
     if (std::holds_alternative<char16_t>(value)) return "char";

@@ -102,16 +102,26 @@ func main() {
 }
 ```
 
-`float`, `double`, and `decimal` accept fractional literals and arithmetic.
-They currently use the same floating-point runtime representation; `decimal`
-does not yet provide exact base-10 arithmetic.
+`float` and `double` use their corresponding IEEE-754 binary precisions; each
+operation rounds to the declared/promoted precision. Fractional literals infer
+as `double`, and assigning or converting to `float` rounds to 32-bit precision.
+Use `f` or `d` suffixes for typed literals, such as `1.25f` and `1.25d`.
+`decimal` uses a signed 128-bit base-10 coefficient with up to 18 fractional
+digits. Decimal addition, subtraction, multiplication, remainder, and integer
+power are exact when the result fits that representation. Decimal division
+truncates toward zero to at most 18 fractional digits. An operation that
+exceeds the coefficient range or cannot retain its required fractional digits
+reports an error.
+Use the `m` suffix to preserve decimal literal digits directly, for example
+`0.123456789012345678m`.
 
-Mixed integer/floating-point arithmetic promotes to the floating-point runtime
-representation. Floating-point `+=`, `-=`, `*=`, `/=`, `%=`, `^=`, `++`, and
-`--` use the same arithmetic rules as expressions. Division and remainder by
-zero are errors, and a non-finite arithmetic result is reported as overflow.
-Floating-point to integer conversions truncate toward zero and reject values
-outside the target integer range.
+Mixed numeric operations promote in this order: decimal, double, float, then
+integer. Decimal operations convert binary floating-point operands through
+their shortest round-trip decimal spelling. Floating-point `+=`, `-=`, `*=`,
+`/=`, `%=`, `^=`, `++`, and `--` use the same arithmetic rules as expressions.
+Division and remainder by zero are errors, and a non-finite floating-point
+result is reported as overflow. Numeric-to-integer conversions truncate toward
+zero and reject values outside the target integer range.
 
 Integer runtime values retain their signedness and declared width. This also
 applies when an integer is passed through an `any` parameter, so
@@ -156,7 +166,8 @@ func identity(value: any) -> any {
 The standard `std.types` module provides type sizes, numeric limits, string
 conversion, checked integer conversions, floating-point conversions, and type
 queries. Integer sizes are language-defined; `float`, `double`, and `decimal`
-are reported as 4, 8, and 16 bytes. `sizeof` accepts either a type name or a
+are reported as 4, 8, and 16 bytes. Those are language storage sizes; decimal
+uses a 128-bit coefficient plus scale metadata in the interpreter. `sizeof` accepts either a type name or a
 variable and reports sizes in bytes. Rift `string` values use UTF-16 storage;
 `char` is one UTF-16 code unit. `min_value`/`max_value` also cover bool and char;
 for string they report the minimum and maximum supported UTF-16 code-unit length.

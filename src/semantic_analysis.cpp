@@ -37,7 +37,10 @@ const Function* resolve(const std::string& name, const Functions& functions, con
 std::string expressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program)
 {
     switch (e.type) {
-    case Expression::Type::Number: return std::holds_alternative<long double>(e.value) ? "double" : "int";
+    case Expression::Type::Number:
+        if (std::holds_alternative<Decimal>(e.value)) return "decimal";
+        if (std::holds_alternative<float>(e.value)) return "float";
+        return std::holds_alternative<double>(e.value) ? "double" : "int";
     case Expression::Type::String: return "string";
     case Expression::Type::Character: return "char";
     case Expression::Type::Boolean: return "bool";
@@ -66,7 +69,9 @@ std::string expressionType(const Expression& e, Types& scopes, const Functions& 
         const bool rn = numeric(r);
         if (!ln || !rn) throw std::runtime_error("Arithmetic operators require numeric operands");
         if (l == "any" || r == "any") return "any";
-        if (l == "float" || l == "double" || l == "decimal" || r == "float" || r == "double" || r == "decimal") return "double";
+        if (l == "decimal" || r == "decimal") return "decimal";
+        if (l == "double" || r == "double") return "double";
+        if (l == "float" || r == "float") return "float";
         return l;
     }
     case Expression::Type::Conditional: {
@@ -74,8 +79,8 @@ std::string expressionType(const Expression& e, Types& scopes, const Functions& 
         auto a = expressionType(*e.right, scopes, functions, program);
         auto b = expressionType(*e.third, scopes, functions, program);
         if (a == b) return a;
-        if ((a == "int" || a.starts_with("int") || a.starts_with("uint")) && (b == "float" || b == "double" || b == "decimal")) return "double";
-        if ((b == "int" || b.starts_with("int") || b.starts_with("uint")) && (a == "float" || a == "double" || a == "decimal")) return "double";
+        if ((a == "int" || a.starts_with("int") || a.starts_with("uint")) && (b == "float" || b == "double" || b == "decimal")) return b;
+        if ((b == "int" || b.starts_with("int") || b.starts_with("uint")) && (a == "float" || a == "double" || a == "decimal")) return a;
         throw std::runtime_error("Conditional branches must have compatible types");
     }
     case Expression::Type::Call: {

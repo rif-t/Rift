@@ -121,6 +121,9 @@ std::vector<Token> Lexer::tokenize()
                 number += current(); advance();
                 while (std::isdigit(static_cast<unsigned char>(current()))) { number += current(); advance(); }
             }
+            if (current() == 'f' || current() == 'F' || current() == 'd' || current() == 'D' || current() == 'm' || current() == 'M') {
+                number += current(); advance();
+            }
 
             emit(TokenType::Number, number);
 

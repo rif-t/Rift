@@ -2,13 +2,14 @@
 
 #include <memory>
 #include "integer.h"
+#include "decimal.h"
 #include "utf.h"
 #include <string>
 #include <variant>
 #include <utility>
 #include <vector>
 
-using RuntimeValue = std::variant<WideInteger, long double, bool, std::string, std::u16string, char16_t, std::monostate>;
+using RuntimeValue = std::variant<WideInteger, float, double, Decimal, bool, std::string, std::u16string, char16_t, std::monostate>;
 
 struct Expression
 {

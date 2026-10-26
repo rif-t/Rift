@@ -37,7 +37,9 @@ std::string valueType(const RuntimeValue& value)
         const unsigned bits = integer->bitWidth ? integer->bitWidth : 32;
         return std::string(integer->isUnsigned ? "uint" : "int") + std::to_string(bits);
     }
-    if (std::holds_alternative<long double>(value)) return "double";
+    if (std::holds_alternative<float>(value)) return "float";
+    if (std::holds_alternative<double>(value)) return "double";
+    if (std::holds_alternative<Decimal>(value)) return "decimal";
     if (std::holds_alternative<bool>(value)) return "bool";
     if (std::holds_alternative<std::u16string>(value)) return "string";
     if (std::holds_alternative<char16_t>(value)) return "char";
@@ -68,7 +70,7 @@ RuntimeValue typeBuiltin(const std::string& name, const std::vector<RuntimeValue
     if (name == "to_string") { requireCount(1); return utf8ToUtf16(stringify(args[0])); }
     if (name == "type_of" || name == "typeof") { requireCount(1); return valueType(args[0]); }
     if (name == "is_integer") { requireCount(1); return std::holds_alternative<WideInteger>(args[0]); }
-    if (name == "is_numeric") { requireCount(1); return std::holds_alternative<WideInteger>(args[0]) || std::holds_alternative<long double>(args[0]); }
+    if (name == "is_numeric") { requireCount(1); return std::holds_alternative<WideInteger>(args[0]) || std::holds_alternative<float>(args[0]) || std::holds_alternative<double>(args[0]) || std::holds_alternative<Decimal>(args[0]); }
     if (name == "is_bool") { requireCount(1); return std::holds_alternative<bool>(args[0]); }
     if (name == "size_of" || name == "sizeof") {
         requireCount(1);
@@ -81,9 +83,9 @@ RuntimeValue typeBuiltin(const std::string& name, const std::vector<RuntimeValue
         if (type == "bool") return name == "max_value";
         if (type == "char") return WideInteger{UInt128{0, name == "max_value" ? 0xffffu : 0u}, false, true};
         if (type == "string") return WideInteger{UInt128{0, name == "max_value" ? UINT32_MAX : 0u}, false, true};
-        if (type == "float") return name == "max_value" ? static_cast<long double>(std::numeric_limits<float>::max()) : -static_cast<long double>(std::numeric_limits<float>::max());
-        if (type == "double") return name == "max_value" ? static_cast<long double>(std::numeric_limits<double>::max()) : -static_cast<long double>(std::numeric_limits<double>::max());
-        if (type == "decimal") return name == "max_value" ? std::numeric_limits<long double>::max() : std::numeric_limits<long double>::lowest();
+        if (type == "float") return name == "max_value" ? std::numeric_limits<float>::max() : -std::numeric_limits<float>::max();
+        if (type == "double") return name == "max_value" ? std::numeric_limits<double>::max() : -std::numeric_limits<double>::max();
+        if (type == "decimal") return Decimal{{name == "max_value" ? (UINT64_C(1) << 63) - 1 : UINT64_C(1) << 63, UINT64_MAX}, name == "min_value", 0};
         bool isUnsigned = type.starts_with("uint");
         if (type == "int") return integerFromBits(32, false, name == "min_value", name == "max_value");
         if (type != "uint8" && type != "uint16" && type != "uint32" && type != "uint64" && type != "uint128" &&
@@ -96,8 +98,14 @@ RuntimeValue typeBuiltin(const std::string& name, const std::vector<RuntimeValue
         requireCount(1);
         const std::string type = name == "to_int" ? "int" : name == "to_uint" ? "uint32" : name.substr(3);
         RuntimeValue source = args[0];
-        if (std::holds_alternative<long double>(source)) {
-            const long double number = std::trunc(std::get<long double>(source));
+        if (std::holds_alternative<Decimal>(source)) {
+            const Decimal decimal = std::get<Decimal>(source);
+            UInt128 magnitude = decimal.coefficient;
+            for (unsigned i = 0; i < decimal.scale; ++i) { UInt128 remainder{}; magnitude = UInt128::divide(magnitude, {0, 10}, remainder); }
+            source = WideInteger{magnitude, decimal.negative && !(magnitude == UInt128{}), false};
+        } else if (std::holds_alternative<float>(source) || std::holds_alternative<double>(source)) {
+            const long double raw = std::holds_alternative<float>(source) ? std::get<float>(source) : std::get<double>(source);
+            const long double number = std::trunc(raw);
             const bool isUnsignedTarget = type.starts_with("uint");
             const long double upperExclusive = std::ldexp(1.0L, isUnsignedTarget ? 128 : 127);
             if (!std::isfinite(number) ||
@@ -147,7 +155,9 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
     case Expression::Type::Unary: {
         RuntimeValue value = evaluate(*expression.left);
         if (expression.operation == "!") return !requireBoolean(value, "Logical negation operand");
-        if (std::holds_alternative<long double>(value)) return -std::get<long double>(value);
+        if (std::holds_alternative<float>(value)) return -std::get<float>(value);
+        if (std::holds_alternative<double>(value)) return -std::get<double>(value);
+        if (std::holds_alternative<Decimal>(value)) { auto decimal = std::get<Decimal>(value); if (!(decimal.coefficient == UInt128{})) decimal.negative = !decimal.negative; return decimal; }
         if (!std::holds_alternative<WideInteger>(value)) throw std::runtime_error("Only numeric values can be negated");
         auto integer = std::get<WideInteger>(value);
         return negate(integer);

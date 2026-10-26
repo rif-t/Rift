@@ -35,3 +35,10 @@ add_test(
         "-DRIFT_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests"
         -P "${PROJECT_SOURCE_DIR}/tests/priority1.cmake"
 )
+add_test(
+    NAME rift_floating_type_regressions
+    COMMAND ${CMAKE_COMMAND}
+        "-DRIFT_EXECUTABLE=$<TARGET_FILE:rift>"
+        "-DRIFT_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests"
+        -P "${PROJECT_SOURCE_DIR}/tests/floating_types.cmake"
+)
