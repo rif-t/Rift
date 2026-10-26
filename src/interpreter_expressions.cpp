@@ -15,6 +15,7 @@ WideInteger integerFromBits(unsigned bits, bool isUnsigned, bool negative = fals
 {
     WideInteger value;
     value.isUnsigned = isUnsigned;
+    value.bitWidth = static_cast<std::uint8_t>(bits);
     if (isUnsigned && !maximum) return value;
     value.negative = negative && !isUnsigned;
     if (bits == 128) {
@@ -32,7 +33,10 @@ WideInteger integerFromBits(unsigned bits, bool isUnsigned, bool negative = fals
 
 std::string valueType(const RuntimeValue& value)
 {
-    if (std::holds_alternative<WideInteger>(value)) return std::get<WideInteger>(value).isUnsigned ? "uint128" : "int";
+    if (const auto* integer = std::get_if<WideInteger>(&value)) {
+        const unsigned bits = integer->bitWidth ? integer->bitWidth : 32;
+        return std::string(integer->isUnsigned ? "uint" : "int") + std::to_string(bits);
+    }
     if (std::holds_alternative<long double>(value)) return "double";
     if (std::holds_alternative<bool>(value)) return "bool";
     if (std::holds_alternative<std::u16string>(value)) return "string";

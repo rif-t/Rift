@@ -120,6 +120,8 @@ struct WideInteger
     UInt128 magnitude{};
     bool negative = false;
     bool isUnsigned = false;
+    // Zero means an untyped literal; otherwise this records its language width.
+    std::uint8_t bitWidth = 0;
 
     std::string toString() const { return (negative && !(magnitude == UInt128{}) ? "-" : "") + magnitude.toString(); }
     std::string toBase(unsigned base, bool uppercase = false) const { return (negative && !(magnitude == UInt128{}) ? "-" : "") + magnitude.toBase(base, uppercase); }

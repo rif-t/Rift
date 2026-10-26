@@ -1,5 +1,6 @@
 #include "interpreter.h"
 #include "interpreter_internal.h"
+#include "semantic_analysis.h"
 
 #include <stdexcept>
 
@@ -25,6 +26,7 @@ struct ScopePopGuard {
 
 void Interpreter::run(const Program& program)
 {
+    validateProgram(program);
     functions_.clear();
     usingNamespaces_ = program.usingNamespaces;
     for (const auto& function : program.functions) {

@@ -28,3 +28,10 @@ add_test(
         "-DRIFT_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests"
         -P "${PROJECT_SOURCE_DIR}/tests/priority0.cmake"
 )
+add_test(
+    NAME rift_priority1_regressions
+    COMMAND ${CMAKE_COMMAND}
+        "-DRIFT_EXECUTABLE=$<TARGET_FILE:rift>"
+        "-DRIFT_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests"
+        -P "${PROJECT_SOURCE_DIR}/tests/priority1.cmake"
+)

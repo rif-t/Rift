@@ -10,6 +10,7 @@ namespace rift::runtime {
 WideInteger addIntegers(WideInteger a, WideInteger b)
 {
     WideInteger result;
+    result.bitWidth = std::max(a.bitWidth, b.bitWidth);
     result.isUnsigned = a.isUnsigned || b.isUnsigned;
     if (result.isUnsigned && (a.negative || b.negative)) throw std::runtime_error("Cannot mix negative and unsigned integer values");
     if (a.negative == b.negative) {
@@ -37,6 +38,7 @@ WideInteger negate(WideInteger value)
 WideInteger multiplyIntegers(WideInteger a, WideInteger b)
 {
     WideInteger result;
+    result.bitWidth = std::max(a.bitWidth, b.bitWidth);
     bool overflow = false;
     result.magnitude = UInt128::multiply(a.magnitude, b.magnitude, overflow);
     if (overflow) throw std::runtime_error("128-bit integer overflow");
@@ -67,6 +69,7 @@ WideInteger applyArithmetic(const std::string& operation, WideInteger a, WideInt
     if (operation == "/") {
         if (b.magnitude == UInt128{}) throw std::runtime_error("Division by zero");
         WideInteger result;
+        result.bitWidth = std::max(a.bitWidth, b.bitWidth);
         UInt128 remainder{};
         result.magnitude = UInt128::divide(a.magnitude, b.magnitude, remainder);
         result.negative = a.negative != b.negative;
@@ -76,6 +79,7 @@ WideInteger applyArithmetic(const std::string& operation, WideInteger a, WideInt
     if (operation == "%") {
         if (b.magnitude == UInt128{}) throw std::runtime_error("Remainder by zero");
         WideInteger result;
+        result.bitWidth = std::max(a.bitWidth, b.bitWidth);
         UInt128 remainder{};
         UInt128::divide(a.magnitude, b.magnitude, remainder);
         result.magnitude = remainder;
@@ -193,6 +197,8 @@ RuntimeValue validateValue(RuntimeValue value, const std::string& type, const st
     if (integer.negative && isUnsigned) throw std::runtime_error("Unsigned integer cannot be negative");
     if (!integerFitsType(integer, type)) throw std::runtime_error("Value for '" + name + "' is outside the range of " + type);
     integer.isUnsigned = isUnsigned;
+    const std::string canonicalType = type == "int" ? "int32" : type;
+    integer.bitWidth = static_cast<std::uint8_t>(std::stoi(canonicalType.substr(isUnsigned ? 4 : 3)));
     return integer;
 }
 

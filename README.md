@@ -113,6 +113,20 @@ zero are errors, and a non-finite arithmetic result is reported as overflow.
 Floating-point to integer conversions truncate toward zero and reject values
 outside the target integer range.
 
+Integer runtime values retain their signedness and declared width. This also
+applies when an integer is passed through an `any` parameter, so
+`std.types.type_of(value)` and `std.types.size_of(value)` report its original
+integer type. Untyped integer literals use the language's `int` default (32
+bits); typed arithmetic keeps the widest operand width, and assigning a result
+to a narrower type checks that value against the destination range.
+
+Before `main` runs, Rift checks duplicate function and parameter names, call
+targets and argument counts, argument and return type compatibility, invalid
+returns, and whether non-void functions can fall through without returning.
+Calls and arithmetic involving `any` are checked at runtime because their
+concrete types are not known statically. Runtime checks remain in place for
+integer range limits and values that cannot be proven from their types.
+
 ## Type inference and `any`
 
 Use `:=` to infer a local variable's type from its initial value. Integer
