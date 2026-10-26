@@ -28,6 +28,7 @@ struct Expression
     };
 
     Type type;
+    mutable std::string resolvedType;
 
     RuntimeValue value = WideInteger{};
     std::string name;
@@ -78,7 +79,6 @@ struct Statement
     bool newline = true;
     std::vector<IfBranch> branches;
     std::vector<Statement> elseStatements;
-    std::vector<Statement> blockStatements;
 };
 
 struct Function

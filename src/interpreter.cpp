@@ -9,7 +9,11 @@ using namespace rift::runtime;
 namespace {
 std::string inferType(const RuntimeValue& value)
 {
-    if (std::holds_alternative<WideInteger>(value)) return "int";
+    if (const auto* integer = std::get_if<WideInteger>(&value)) {
+        const unsigned bits = integer->bitWidth ? integer->bitWidth : 32;
+        if (integer->isUnsigned) return "uint" + std::to_string(bits);
+        return bits == 32 ? "int" : "int" + std::to_string(bits);
+    }
     if (std::holds_alternative<float>(value)) return "float";
     if (std::holds_alternative<double>(value)) return "double";
     if (std::holds_alternative<Decimal>(value)) return "decimal";
@@ -126,7 +130,15 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 } else {
                     right = WideInteger{UInt128{0, 1}, false, false};
                 }
-                value = applyNumericArithmetic(statement.operation, currentValue, right);
+                if (statement.operation == "+" && std::holds_alternative<std::u16string>(currentValue) &&
+                    (std::holds_alternative<std::u16string>(right) || std::holds_alternative<char16_t>(right))) {
+                    std::u16string combined = std::get<std::u16string>(currentValue);
+                    if (const auto* text = std::get_if<std::u16string>(&right)) combined += *text;
+                    else combined.push_back(std::get<char16_t>(right));
+                    value = std::move(combined);
+                } else {
+                    value = applyNumericArithmetic(statement.operation, currentValue, right);
+                }
             }
             value = validateValue(std::move(value), variable.type, statement.name);
             variable.value = std::move(value);

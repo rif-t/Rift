@@ -7,10 +7,23 @@
 #include <stdexcept>
 
 namespace rift::runtime {
+namespace {
+unsigned effectiveWidth(const WideInteger& value)
+{
+    return value.bitWidth ? value.bitWidth : 32;
+}
+
+void checkIntegerWidth(const WideInteger& value)
+{
+    const std::string type = std::string(value.isUnsigned ? "uint" : "int") + std::to_string(effectiveWidth(value));
+    if (!integerFitsType(value, type)) throw std::runtime_error("Integer overflow for " + type);
+}
+}
+
 WideInteger addIntegers(WideInteger a, WideInteger b)
 {
     WideInteger result;
-    result.bitWidth = std::max(a.bitWidth, b.bitWidth);
+    result.bitWidth = static_cast<std::uint8_t>(std::max(effectiveWidth(a), effectiveWidth(b)));
     result.isUnsigned = a.isUnsigned || b.isUnsigned;
     if (result.isUnsigned && (a.negative || b.negative)) throw std::runtime_error("Cannot mix negative and unsigned integer values");
     if (a.negative == b.negative) {
@@ -25,33 +38,36 @@ WideInteger addIntegers(WideInteger a, WideInteger b)
         result.magnitude = UInt128::subtract(a.magnitude, b.magnitude);
         result.negative = a.negative;
     }
-    if (result.isUnsigned && result.negative) throw std::runtime_error("Cannot produce a negative unsigned integer");
+    checkIntegerWidth(result);
     return result;
 }
 
 WideInteger negate(WideInteger value)
 {
     if (!(value.magnitude == UInt128{})) value.negative = !value.negative;
+    if (value.bitWidth) checkIntegerWidth(value);
     return value;
 }
 
 WideInteger multiplyIntegers(WideInteger a, WideInteger b)
 {
     WideInteger result;
-    result.bitWidth = std::max(a.bitWidth, b.bitWidth);
+    result.bitWidth = static_cast<std::uint8_t>(std::max(effectiveWidth(a), effectiveWidth(b)));
     bool overflow = false;
     result.magnitude = UInt128::multiply(a.magnitude, b.magnitude, overflow);
     if (overflow) throw std::runtime_error("128-bit integer overflow");
     result.negative = a.negative != b.negative;
     result.isUnsigned = a.isUnsigned || b.isUnsigned;
-    if (result.isUnsigned && result.negative) throw std::runtime_error("Cannot produce a negative unsigned integer");
+    if (result.isUnsigned && (a.negative || b.negative)) throw std::runtime_error("Cannot mix negative and unsigned integer values");
+    checkIntegerWidth(result);
     return result;
 }
 
 WideInteger integerPower(WideInteger base, WideInteger exponent)
 {
     if (exponent.negative) throw std::runtime_error("Exponent must be non-negative for integer values");
-    WideInteger result{UInt128{0, 1}, false, base.isUnsigned || exponent.isUnsigned};
+    WideInteger result{UInt128{0, 1}, false, base.isUnsigned, static_cast<std::uint8_t>(effectiveWidth(base))};
+    checkIntegerWidth(result);
     while (!(exponent.magnitude == UInt128{})) {
         if (exponent.magnitude.low & 1) result = multiplyIntegers(result, base);
         UInt128 remainder{};
@@ -64,27 +80,59 @@ WideInteger integerPower(WideInteger base, WideInteger exponent)
 WideInteger applyArithmetic(const std::string& operation, WideInteger a, WideInteger b)
 {
     if (operation == "+") return addIntegers(a, b);
-    if (operation == "-") return addIntegers(a, negate(b));
+    if (operation == "-") {
+        if ((a.isUnsigned || b.isUnsigned) && !a.negative && !b.negative) {
+            if (a.magnitude < b.magnitude) throw std::runtime_error("Unsigned integer underflow");
+            WideInteger result;
+            result.magnitude = UInt128::subtract(a.magnitude, b.magnitude);
+            result.bitWidth = static_cast<std::uint8_t>(std::max(effectiveWidth(a), effectiveWidth(b)));
+            result.isUnsigned = a.isUnsigned || b.isUnsigned;
+            checkIntegerWidth(result);
+            return result;
+        }
+        if (a.isUnsigned || b.isUnsigned) throw std::runtime_error("Cannot mix negative and unsigned integer values");
+        WideInteger result;
+        result.bitWidth = static_cast<std::uint8_t>(std::max(effectiveWidth(a), effectiveWidth(b)));
+        if (a.negative != b.negative) {
+            bool overflow = false;
+            result.magnitude = UInt128::add(a.magnitude, b.magnitude, overflow);
+            if (overflow) throw std::runtime_error("128-bit integer overflow");
+            result.negative = a.negative;
+        } else if (a.magnitude < b.magnitude) {
+            result.magnitude = UInt128::subtract(b.magnitude, a.magnitude);
+            result.negative = !a.negative;
+        } else {
+            result.magnitude = UInt128::subtract(a.magnitude, b.magnitude);
+            result.negative = a.negative;
+        }
+        if (result.magnitude == UInt128{}) result.negative = false;
+        checkIntegerWidth(result);
+        return result;
+    }
     if (operation == "*") return multiplyIntegers(a, b);
     if (operation == "/") {
         if (b.magnitude == UInt128{}) throw std::runtime_error("Division by zero");
         WideInteger result;
-        result.bitWidth = std::max(a.bitWidth, b.bitWidth);
+        result.bitWidth = static_cast<std::uint8_t>(std::max(effectiveWidth(a), effectiveWidth(b)));
         UInt128 remainder{};
         result.magnitude = UInt128::divide(a.magnitude, b.magnitude, remainder);
         result.negative = a.negative != b.negative;
         result.isUnsigned = a.isUnsigned || b.isUnsigned;
+        if (result.isUnsigned && (a.negative || b.negative)) throw std::runtime_error("Cannot mix negative and unsigned integer values");
+        checkIntegerWidth(result);
         return result;
     }
     if (operation == "%") {
         if (b.magnitude == UInt128{}) throw std::runtime_error("Remainder by zero");
         WideInteger result;
-        result.bitWidth = std::max(a.bitWidth, b.bitWidth);
+        result.bitWidth = static_cast<std::uint8_t>(std::max(effectiveWidth(a), effectiveWidth(b)));
         UInt128 remainder{};
         UInt128::divide(a.magnitude, b.magnitude, remainder);
         result.magnitude = remainder;
         result.negative = a.negative;
         result.isUnsigned = a.isUnsigned || b.isUnsigned;
+        if (result.isUnsigned && (a.negative || b.negative)) throw std::runtime_error("Cannot mix negative and unsigned integer values");
+        checkIntegerWidth(result);
         return result;
     }
     if (operation == "^") return integerPower(a, b);
@@ -249,8 +297,39 @@ RuntimeValue validateValue(RuntimeValue value, const std::string& type, const st
         if (!std::holds_alternative<bool>(value)) throw std::runtime_error("Value for '" + name + "' must be bool");
         return value;
     }
-    if (!std::holds_alternative<WideInteger>(value)) throw std::runtime_error("Value for '" + name + "' must be an integer");
-    auto integer = std::get<WideInteger>(value);
+    WideInteger integer;
+    if (const auto* source = std::get_if<WideInteger>(&value)) {
+        integer = *source;
+    } else if (const auto* decimal = std::get_if<Decimal>(&value)) {
+        integer.magnitude = decimal->coefficient;
+        for (unsigned i = 0; i < decimal->scale; ++i) {
+            UInt128 remainder{};
+            integer.magnitude = UInt128::divide(integer.magnitude, {0, 10}, remainder);
+        }
+        integer.negative = decimal->negative && !(integer.magnitude == UInt128{});
+    } else if (const auto* floating = std::get_if<float>(&value)) {
+        const long double number = std::trunc(static_cast<long double>(*floating));
+        const long double upper = std::ldexp(1.0L, type.starts_with("uint") ? 128 : 127);
+        if (!std::isfinite(number) || (type.starts_with("uint") ? (number < 0 || number >= upper) : (number < -upper || number >= upper)))
+            throw std::runtime_error("Numeric conversion is outside the 128-bit integer range");
+        std::ostringstream text; text << std::fixed << std::setprecision(0) << number;
+        const std::string digits = text.str();
+        const bool negative = !digits.empty() && digits.front() == '-';
+        integer.magnitude = UInt128::parse(negative ? digits.substr(1) : digits);
+        integer.negative = negative && !(integer.magnitude == UInt128{});
+    } else if (const auto* floating = std::get_if<double>(&value)) {
+        const long double number = std::trunc(static_cast<long double>(*floating));
+        const long double upper = std::ldexp(1.0L, type.starts_with("uint") ? 128 : 127);
+        if (!std::isfinite(number) || (type.starts_with("uint") ? (number < 0 || number >= upper) : (number < -upper || number >= upper)))
+            throw std::runtime_error("Numeric conversion is outside the 128-bit integer range");
+        std::ostringstream text; text << std::fixed << std::setprecision(0) << number;
+        const std::string digits = text.str();
+        const bool negative = !digits.empty() && digits.front() == '-';
+        integer.magnitude = UInt128::parse(negative ? digits.substr(1) : digits);
+        integer.negative = negative && !(integer.magnitude == UInt128{});
+    } else {
+        throw std::runtime_error("Value for '" + name + "' must be numeric");
+    }
     const bool isUnsigned = type.starts_with("uint");
     if (integer.negative && isUnsigned) throw std::runtime_error("Unsigned integer cannot be negative");
     if (!integerFitsType(integer, type)) throw std::runtime_error("Value for '" + name + "' is outside the range of " + type);

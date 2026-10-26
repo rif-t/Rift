@@ -6,7 +6,8 @@
 #include <unordered_set>
 
 namespace {
-using Types = std::vector<std::unordered_map<std::string, std::string>>;
+struct TypeInfo { std::string type; bool isConst = false; };
+using Types = std::vector<std::unordered_map<std::string, TypeInfo>>;
 using Functions = std::unordered_map<std::string, const Function*>;
 
 bool numeric(const std::string& t) { return t == "any" || t == "int" || t == "float" || t == "double" || t == "decimal" || t.starts_with("int") || t.starts_with("uint"); }
@@ -15,6 +16,19 @@ bool assignable(const std::string& target, const std::string& source)
     if (target == "any" || target == source || source == "any") return true;
     if (numeric(target) && numeric(source)) return true; // Runtime range checks enforce narrowing conversions.
     return false;
+}
+
+std::string promotedNumericType(const std::string& left, const std::string& right, const std::string& operation = "")
+{
+    if (left == "any" || right == "any") return "any";
+    if (left == "decimal" || right == "decimal") return "decimal";
+    if (left == "double" || right == "double") return "double";
+    if (left == "float" || right == "float") return "float";
+    if (operation == "^") return left;
+    const bool unsignedResult = left.starts_with("uint") || right.starts_with("uint");
+    const unsigned leftBits = left == "int" ? 32 : static_cast<unsigned>(std::stoi(left.substr(left.starts_with("uint") ? 4 : 3)));
+    const unsigned rightBits = right == "int" ? 32 : static_cast<unsigned>(std::stoi(right.substr(right.starts_with("uint") ? 4 : 3)));
+    return std::string(unsignedResult ? "uint" : "int") + std::to_string(std::max(leftBits, rightBits));
 }
 
 const Function* resolve(const std::string& name, const Functions& functions, const Program& program)
@@ -34,7 +48,9 @@ const Function* resolve(const std::string& name, const Functions& functions, con
     return nullptr;
 }
 
-std::string expressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program)
+std::string expressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program);
+
+std::string inferExpressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program)
 {
     switch (e.type) {
     case Expression::Type::Number:
@@ -47,11 +63,12 @@ std::string expressionType(const Expression& e, Types& scopes, const Functions& 
     case Expression::Type::TypeName: return "type";
     case Expression::Type::Identifier:
         for (auto s = scopes.rbegin(); s != scopes.rend(); ++s)
-            if (auto it = s->find(e.name); it != s->end()) return it->second;
+            if (auto it = s->find(e.name); it != s->end()) return it->second.type;
         throw std::runtime_error("Undefined variable: " + e.name);
     case Expression::Type::Unary: {
         const auto type = expressionType(*e.left, scopes, functions, program);
-        if (e.operation == "!") { if (type != "bool") throw std::runtime_error("Logical negation requires bool"); return "bool"; }
+        if (e.operation == "!") { if (type != "bool" && type != "any") throw std::runtime_error("Logical negation requires bool"); return "bool"; }
+        if (e.operation == "-" && type.starts_with("uint")) throw std::runtime_error("Unsigned integer values cannot be negated");
         if (type != "int" && type != "float" && type != "double" && type != "decimal" && !type.starts_with("uint") && !type.starts_with("int"))
             throw std::runtime_error("Unary numeric operator requires a number");
         return type;
@@ -60,27 +77,32 @@ std::string expressionType(const Expression& e, Types& scopes, const Functions& 
         auto l = expressionType(*e.left, scopes, functions, program);
         auto r = expressionType(*e.right, scopes, functions, program);
         if (e.operation == "&&" || e.operation == "||") {
-            if (l != "bool" || r != "bool") throw std::runtime_error("Logical operators require bool operands");
+            if ((l != "bool" && l != "any") || (r != "bool" && r != "any")) throw std::runtime_error("Logical operators require bool operands");
             return "bool";
         }
-        if (e.operation == "==" || e.operation == "!=" || e.operation == "<" || e.operation == "<=" || e.operation == ">" || e.operation == ">=") return "bool";
+        if (e.operation == "==" || e.operation == "!=" || e.operation == "<" || e.operation == "<=" || e.operation == ">" || e.operation == ">=") {
+            const bool bothNumeric = numeric(l) && numeric(r);
+            const bool bothAny = l == "any" || r == "any";
+            const bool sameComparable = l == r && (l == "string" || l == "char" || l == "bool");
+            if (!bothNumeric && !bothAny && !sameComparable)
+                throw std::runtime_error("Comparison operands must have compatible types, got " + l + " and " + r);
+            if (l == "bool" && (e.operation != "==" && e.operation != "!="))
+                throw std::runtime_error("Boolean values support equality comparisons only");
+            return "bool";
+        }
         if (e.operation == "+" && (l == "string" || l == "char") && (r == "string" || r == "char")) return "string";
         const bool ln = numeric(l);
         const bool rn = numeric(r);
         if (!ln || !rn) throw std::runtime_error("Arithmetic operators require numeric operands");
-        if (l == "any" || r == "any") return "any";
-        if (l == "decimal" || r == "decimal") return "decimal";
-        if (l == "double" || r == "double") return "double";
-        if (l == "float" || r == "float") return "float";
-        return l;
+        return promotedNumericType(l, r, e.operation);
     }
     case Expression::Type::Conditional: {
-        if (expressionType(*e.left, scopes, functions, program) != "bool") throw std::runtime_error("Conditional expression condition must be bool");
+        const auto conditionType = expressionType(*e.left, scopes, functions, program);
+        if (conditionType != "bool" && conditionType != "any") throw std::runtime_error("Conditional expression condition must be bool");
         auto a = expressionType(*e.right, scopes, functions, program);
         auto b = expressionType(*e.third, scopes, functions, program);
         if (a == b) return a;
-        if ((a == "int" || a.starts_with("int") || a.starts_with("uint")) && (b == "float" || b == "double" || b == "decimal")) return b;
-        if ((b == "int" || b.starts_with("int") || b.starts_with("uint")) && (a == "float" || a == "double" || a == "decimal")) return a;
+        if (numeric(a) && numeric(b)) return promotedNumericType(a, b);
         throw std::runtime_error("Conditional branches must have compatible types");
     }
     case Expression::Type::Call: {
@@ -99,6 +121,12 @@ std::string expressionType(const Expression& e, Types& scopes, const Functions& 
     }
     }
     return "any";
+}
+
+std::string expressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program)
+{
+    e.resolvedType = inferExpressionType(e, scopes, functions, program);
+    return e.resolvedType;
 }
 
 bool returnsOnAllPaths(const std::vector<Statement>& statements)
@@ -129,16 +157,23 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
                     else if (type != "const" && !assignable(type, valueType))
                         throw std::runtime_error("Cannot initialize '" + name + "' of type " + type + " with " + valueType);
                 }
-                scopes.back()[name] = type;
+                scopes.back()[name] = {type, d.isConst};
             }
         } else if (s.type == Statement::Type::Assignment) {
             std::string target;
             bool found = false;
-            for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) if (auto it = scope->find(s.name); it != scope->end()) { target = it->second; found = true; break; }
+            bool isConst = false;
+            for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) if (auto it = scope->find(s.name); it != scope->end()) { target = it->second.type; isConst = it->second.isConst; found = true; break; }
             if (!found) throw std::runtime_error("Cannot assign to undefined variable: " + s.name);
+            if (isConst) throw std::runtime_error("Cannot assign to const variable: " + s.name);
             if (s.expression) {
                 const auto source = expressionType(*s.expression, scopes, functions, program);
                 if (s.operation == "=" && !assignable(target, source)) throw std::runtime_error("Cannot assign " + source + " to " + target);
+                const bool stringConcatenation = s.operation == "+" && target == "string" && (source == "string" || source == "char");
+                if (s.operation != "=" && !stringConcatenation && (!numeric(target) || !numeric(source)))
+                    throw std::runtime_error("Compound arithmetic assignment requires numeric operands");
+            } else if (s.operation != "=" && !numeric(target)) {
+                throw std::runtime_error("Increment and decrement require a numeric variable");
             }
         } else if (s.type == Statement::Type::Print) {
             for (const auto& a : s.arguments) expressionType(*a, scopes, functions, program);
@@ -153,7 +188,8 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
             }
         } else if (s.type == Statement::Type::If) {
             for (const auto& branch : s.branches) {
-                if (expressionType(*branch.condition, scopes, functions, program) != "bool") throw std::runtime_error("if condition must be bool");
+                const auto conditionType = expressionType(*branch.condition, scopes, functions, program);
+                if (conditionType != "bool" && conditionType != "any") throw std::runtime_error("if condition must be bool");
                 scopes.emplace_back(); checkStatements(branch.statements, scopes, functions, program, returnType); scopes.pop_back();
             }
             if (!s.elseStatements.empty()) { scopes.emplace_back(); checkStatements(s.elseStatements, scopes, functions, program, returnType); scopes.pop_back(); }
@@ -176,7 +212,7 @@ void validateProgram(const Program& program)
         std::unordered_set<std::string> params;
         for (const auto& [name, type] : f.parameters) {
             if (!params.insert(name).second) throw std::runtime_error("Duplicate parameter '" + name + "' in function '" + f.name + "'");
-            scopes.back()[name] = type;
+            scopes.back()[name] = {type, false};
         }
         checkStatements(f.statements, scopes, functions, program, f.returnType);
         if (!f.returnType.empty() && f.returnType != "void" && !returnsOnAllPaths(f.statements))

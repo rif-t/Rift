@@ -1,5 +1,19 @@
 # Rift
 
+## Build and test
+
+Rift uses CMake and C++23:
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
+```
+
+CTest groups regressions under lexer, parser, integer, interpreter, type-system,
+and integration labels. GitHub Actions runs the build and all groups on Linux
+and Windows for pushes and pull requests.
+
 Rift is an experimental C-like programming language.
 
 ## Standard library
@@ -16,7 +30,7 @@ using std
 func main() {
     a : int = 2
     b : string = "program"
-    print("The awesome {}", b, "with RIFT")
+    println("The awesome {} with Rift", b)
     println(a+a*a)
 }
 ```
@@ -78,7 +92,7 @@ func main() {
 ```
 
 With `using math`, the same function can be called as `double(21)`. Namespace
-Namespace blocks can contain functions or nested namespaces. Nested function
+blocks can contain functions or nested namespaces. Nested function
 names use dot qualification, such as `graphics.color.rgb(...)`; `using
 graphics.color;` makes those functions available unqualified.
 
@@ -116,7 +130,10 @@ Use the `m` suffix to preserve decimal literal digits directly, for example
 `0.123456789012345678m`.
 
 Mixed numeric operations promote in this order: decimal, double, float, then
-integer. Decimal operations convert binary floating-point operands through
+integer. Integer operations use the widest operand width; plain integer
+literals promote as `int` (`int32`). Results outside the promoted integer
+range report overflow. Mixing negative values with unsigned values is an error.
+Decimal operations convert binary floating-point operands through
 their shortest round-trip decimal spelling. Floating-point `+=`, `-=`, `*=`,
 `/=`, `%=`, `^=`, `++`, and `--` use the same arithmetic rules as expressions.
 Division and remainder by zero are errors, and a non-finite floating-point

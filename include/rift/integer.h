@@ -155,7 +155,7 @@ inline bool integerFitsType(const WideInteger& value, const std::string& type)
         limit.high = isUnsigned ? UINT64_MAX : (UINT64_C(1) << 63) - 1;
         limit.low = isUnsigned ? UINT64_MAX : UINT64_MAX;
     } else if (isUnsigned) {
-        limit.low = (UINT64_C(1) << bits) - 1;
+        limit.low = bits == 64 ? UINT64_MAX : (UINT64_C(1) << bits) - 1;
     } else {
         limit.low = (UINT64_C(1) << (bits - 1)) - 1;
     }

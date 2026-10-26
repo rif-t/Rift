@@ -97,28 +97,7 @@ RuntimeValue typeBuiltin(const std::string& name, const std::vector<RuntimeValue
     if (name.starts_with("to_uint") || name.starts_with("to_int")) {
         requireCount(1);
         const std::string type = name == "to_int" ? "int" : name == "to_uint" ? "uint32" : name.substr(3);
-        RuntimeValue source = args[0];
-        if (std::holds_alternative<Decimal>(source)) {
-            const Decimal decimal = std::get<Decimal>(source);
-            UInt128 magnitude = decimal.coefficient;
-            for (unsigned i = 0; i < decimal.scale; ++i) { UInt128 remainder{}; magnitude = UInt128::divide(magnitude, {0, 10}, remainder); }
-            source = WideInteger{magnitude, decimal.negative && !(magnitude == UInt128{}), false};
-        } else if (std::holds_alternative<float>(source) || std::holds_alternative<double>(source)) {
-            const long double raw = std::holds_alternative<float>(source) ? std::get<float>(source) : std::get<double>(source);
-            const long double number = std::trunc(raw);
-            const bool isUnsignedTarget = type.starts_with("uint");
-            const long double upperExclusive = std::ldexp(1.0L, isUnsignedTarget ? 128 : 127);
-            if (!std::isfinite(number) ||
-                (isUnsignedTarget ? (number < 0 || number >= upperExclusive)
-                                  : (number < -upperExclusive || number >= upperExclusive)))
-                throw std::runtime_error("Numeric conversion is outside the 128-bit integer range");
-            std::ostringstream text; text << std::fixed << std::setprecision(0) << number;
-            const std::string digits = text.str();
-            const bool negative = !digits.empty() && digits[0] == '-';
-            WideInteger integer{UInt128::parse(negative ? digits.substr(1) : digits), negative, false};
-            source = integer;
-        }
-        return validateValue(std::move(source), type, "conversion");
+        return validateValue(args[0], type, "conversion");
     }
     if (name == "to_float" || name == "to_double" || name == "to_decimal") {
         requireCount(1);
@@ -160,6 +139,7 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
         if (std::holds_alternative<Decimal>(value)) { auto decimal = std::get<Decimal>(value); if (!(decimal.coefficient == UInt128{})) decimal.negative = !decimal.negative; return decimal; }
         if (!std::holds_alternative<WideInteger>(value)) throw std::runtime_error("Only numeric values can be negated");
         auto integer = std::get<WideInteger>(value);
+        if (integer.isUnsigned) throw std::runtime_error("Unsigned integer values cannot be negated");
         return negate(integer);
     }
     case Expression::Type::Binary: {
@@ -192,7 +172,11 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
     }
     case Expression::Type::Conditional: {
         const bool condition = requireBoolean(evaluate(*expression.left), "Conditional expression condition");
-        return evaluate(condition ? *expression.right : *expression.third);
+        RuntimeValue result = evaluate(condition ? *expression.right : *expression.third);
+        const std::string& type = expression.resolvedType;
+        if (type == "float" || type == "double" || type == "decimal" || type == "int" || type.starts_with("int") || type.starts_with("uint"))
+            return validateValue(std::move(result), type, "conditional expression");
+        return result;
     }
     case Expression::Type::Call: {
         std::string builtinName;
