@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <stdexcept>
 #include <string>
 
@@ -87,14 +89,28 @@ struct UInt128
     std::string toString() const
     {
         if (*this == UInt128{}) return "0";
-        std::string result;
+        constexpr std::uint64_t decimalChunkBase = UINT64_C(10000000000000000000);
+        std::array<std::uint64_t, 3> chunks{};
+        std::size_t chunkCount = 0;
         UInt128 value = *this;
         while (!(value == UInt128{})) {
             UInt128 rem{};
-            value = divide(value, {0, 10}, rem);
-            result.push_back(static_cast<char>('0' + rem.low));
+            value = divide(value, {0, decimalChunkBase}, rem);
+            chunks[chunkCount++] = rem.low;
         }
-        std::reverse(result.begin(), result.end());
+        std::string result;
+        result.reserve(39);
+        char digits[20];
+        auto [first, error] = std::to_chars(digits, digits + sizeof(digits), chunks[chunkCount - 1]);
+        if (error != std::errc{}) throw std::runtime_error("Integer formatting failed");
+        result.append(digits, first);
+        while (--chunkCount) {
+            auto [chunkFirst, chunkError] = std::to_chars(digits, digits + sizeof(digits), chunks[chunkCount - 1]);
+            if (chunkError != std::errc{}) throw std::runtime_error("Integer formatting failed");
+            const auto digitCount = static_cast<std::size_t>(chunkFirst - digits);
+            result.append(19 - digitCount, '0');
+            result.append(digits, chunkFirst);
+        }
         return result;
     }
 

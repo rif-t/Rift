@@ -42,3 +42,11 @@ add_test(
         "-DRIFT_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests"
         -P "${PROJECT_SOURCE_DIR}/tests/floating_types.cmake"
 )
+
+option(RIFT_BUILD_BENCHMARKS "Build Rift's profiling benchmarks" OFF)
+if(RIFT_BUILD_BENCHMARKS)
+    set(RIFT_BENCHMARK_SOURCES ${RIFT_FILES})
+    list(FILTER RIFT_BENCHMARK_SOURCES EXCLUDE REGEX "/src/main\\.cpp$")
+    add_executable(rift_bench benchmarks/benchmark.cpp ${RIFT_BENCHMARK_SOURCES})
+    target_include_directories(rift_bench PRIVATE ${PROJECT_SOURCE_DIR}/include/rift)
+endif()
