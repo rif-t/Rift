@@ -26,6 +26,7 @@ vendor/
 dist/
 build/
 build-bench/
+/build-*/
 out/
 target/
 coverage/
