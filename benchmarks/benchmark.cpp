@@ -67,7 +67,6 @@ void countStatements(const std::vector<Statement>& statements, std::size_t& stat
             countStatements(branch.statements, statementCount, expressionCount);
         }
         countStatements(statement.elseStatements, statementCount, expressionCount);
-        countStatements(statement.blockStatements, statementCount, expressionCount);
     }
 }
 
@@ -116,6 +115,13 @@ std::string stringProgram()
 func main() { work(150, "") }
 )";
 }
+
+std::string nestedExpressionProgram()
+{
+    std::string expression = "1";
+    for (int i = 0; i < 100; ++i) expression = "1 + (" + expression + ")";
+    return "func main() { value: int = " + expression + " }\n";
+}
 }
 
 void* operator new(std::size_t size)
@@ -159,6 +165,7 @@ int runBenchmarks()
     runWorkload("function calls (300 frames)", callProgram(), 150);
     runWorkload("scope and variable lookup (250 frames)", lookupProgram(), 150);
     runWorkload("string concatenation (150 steps)", stringProgram(), 100);
+    runWorkload("nested expressions (100 levels)", nestedExpressionProgram(), 300);
 
     const UInt128 dividend{UINT64_C(0xfedcba9876543210), UINT64_C(0x123456789abcdef0)};
     const UInt128 divisor{0, UINT64_C(123456789)};

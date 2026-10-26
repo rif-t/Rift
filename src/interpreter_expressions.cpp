@@ -85,7 +85,7 @@ RuntimeValue typeBuiltin(const std::string& name, const std::vector<RuntimeValue
         if (type == "string") return WideInteger{UInt128{0, name == "max_value" ? UINT32_MAX : 0u}, false, true};
         if (type == "float") return name == "max_value" ? std::numeric_limits<float>::max() : -std::numeric_limits<float>::max();
         if (type == "double") return name == "max_value" ? std::numeric_limits<double>::max() : -std::numeric_limits<double>::max();
-        if (type == "decimal") return Decimal{{name == "max_value" ? (UINT64_C(1) << 63) - 1 : UINT64_C(1) << 63, UINT64_MAX}, name == "min_value", 0};
+        if (type == "decimal") return Decimal{{name == "max_value" ? (UINT64_C(1) << 63) - 1 : UINT64_C(1) << 63, name == "max_value" ? UINT64_MAX : 0}, name == "min_value", 0};
         bool isUnsigned = type.starts_with("uint");
         if (type == "int") return integerFromBits(32, false, name == "min_value", name == "max_value");
         if (type != "uint8" && type != "uint16" && type != "uint32" && type != "uint64" && type != "uint128" &&
@@ -196,6 +196,9 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
             if (std::find(typeFunctions.begin(), typeFunctions.end(), expression.name) != typeFunctions.end()) builtinName = expression.name;
         }
         if (!builtinName.empty()) {
+            if ((builtinName == "type_of" || builtinName == "typeof") && expression.arguments.size() == 1 &&
+                expression.arguments[0]->type == Expression::Type::TypeName)
+                return expression.arguments[0]->name;
             std::vector<RuntimeValue> arguments;
             arguments.reserve(expression.arguments.size());
             const bool inspectVariableType = (builtinName == "size_of" || builtinName == "sizeof" || builtinName == "type_of" || builtinName == "typeof") &&

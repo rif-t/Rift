@@ -149,7 +149,9 @@ to a narrower type checks that value against the destination range.
 
 Before `main` runs, Rift checks duplicate function and parameter names, call
 targets and argument counts, argument and return type compatibility, invalid
-returns, and whether non-void functions can fall through without returning.
+returns, and whether non-void functions can fall through without returning. It
+also validates `std.types`/`types` built-in names, argument counts, and numeric
+conversion argument types during semantic analysis.
 Calls and arithmetic involving `any` are checked at runtime because their
 concrete types are not known statically. Runtime checks remain in place for
 integer range limits and values that cannot be proven from their types.

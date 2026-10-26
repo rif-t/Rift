@@ -168,3 +168,167 @@ func main() {
     println(invert(1))
 }
 ]=] 1 "Logical negation operand must be bool")
+
+run_rift_case(unknown_qualified_type_builtin [=[using std
+func main() {
+    println("must not print")
+    std.types.not_a_function(1)
+}
+]=] 1 "Unknown std.types function: not_a_function")
+
+run_rift_case(unknown_types_builtin_via_std [=[using std
+func main() {
+    println("must not print")
+    types.not_a_function(1)
+}
+]=] 1 "Unknown std.types function: not_a_function")
+
+run_rift_case(unknown_unqualified_builtin [=[using std
+using std.types
+func main() {
+    println("must not print")
+    not_a_function(1)
+}
+]=] 1 "Undefined function: not_a_function")
+
+run_rift_case(type_builtin_wrong_argument_count [=[using std
+using std.types
+func main() {
+    println("must not print")
+    size_of(int, int)
+}
+]=] 1 "std.types.size_of expects 1 argument(s)")
+
+run_rift_case(type_builtin_missing_argument [=[using std
+using std.types
+func main() {
+    println("must not print")
+    type_of()
+}
+]=] 1 "std.types.type_of expects 1 argument(s)")
+
+run_rift_case(type_builtin_incompatible_argument [=[using std
+using std.types
+func main() {
+    println("must not print")
+    to_int8("not a number")
+}
+]=] 1 "std.types.to_int8 expects a numeric argument, got string")
+
+run_rift_case(type_builtin_unsupported_type [=[using std
+using std.types
+func main() {
+    println("must not print")
+    size_of(any)
+}
+]=] 1 "std.types.size_of does not support type 'any'")
+
+run_rift_case(explicit_builtin_routes_and_types [=[using std
+func main() {
+    value: int16 = 7
+    type_name: string = std.types.type_of(value)
+    println("{} {} {}", type_name, types.size_of(value), std.types.max_value(int16))
+    from_type_name: string = std.types.type_of(uint64)
+    println("{}", from_type_name)
+}
+]=] 0 "int16 2 32767\nuint64")
+
+run_rift_case(decimal_minimum_boundary [=[using std
+using std.types
+func main() {
+    minimum: decimal = min_value(decimal)
+    maximum: decimal = max_value(decimal)
+    println(minimum)
+    println(maximum)
+    println(minimum < maximum)
+}
+]=] 0 "-170141183460469231731687303715884105728\n170141183460469231731687303715884105727\ntrue")
+
+run_rift_case(integer_edges_and_mixed_comparisons [=[using std
+using std.types
+func main() {
+    signed_min: int8 = min_value(int8)
+    signed_max: int8 = max_value(int8)
+    unsigned_max: uint8 = max_value(uint8)
+    as_float: float = signed_min
+    as_double: double = unsigned_max
+    println(signed_min, " ", signed_max, " ", unsigned_max)
+    println(as_float, " ", as_double)
+    println(signed_min < as_double)
+}
+]=] 0 "-128 127 255\n-128 255\ntrue")
+
+run_rift_case(decimal_precision_and_truncation [=[using std
+using std.types
+func main() {
+    exact: decimal = 0.123456789012345678m
+    quotient: decimal = to_decimal(2) / to_decimal(3)
+    negative_quotient: decimal = to_decimal(-2) / to_decimal(3)
+    truncated: int = to_int(-0.9)
+    println(exact)
+    println(quotient)
+    println(negative_quotient)
+    println(truncated)
+}
+]=] 0 "0.123456789012345678\n0.666666666666666666\n-0.666666666666666666\n0")
+
+run_rift_case(explicit_float_conversions [=[using std
+using std.types
+func main() {
+    single: float = to_float(1)
+    precise: double = to_double(2.5f)
+    decimal_value: decimal = to_decimal(0.1)
+    println(type_of(single), " ", single)
+    println(type_of(precise), " ", precise)
+    println(decimal_value)
+}
+]=] 0 "float 1\ndouble 2.5\n0.1")
+
+run_rift_case(void_builtin_argument_rejected [=[using std
+using std.types
+func nothing() {
+}
+func main() {
+    println("must not print")
+    size_of(nothing())
+}
+]=] 1 "std.types.size_of cannot inspect a void value")
+
+run_rift_case(decimal_overflow_is_language_error [=[using std
+using std.types
+func main() {
+    value: decimal = max_value(decimal)
+    value += 1
+}
+]=] 1 "Decimal")
+
+run_rift_case(float_overflow_is_language_error [=[using std
+using std.types
+func main() {
+    value: float = max_value(float)
+    value *= 2
+}
+]=] 1 "Floating-point overflow")
+
+run_rift_case(double_overflow_is_language_error [=[using std
+using std.types
+func main() {
+    value: double = max_value(double)
+    value *= 2
+}
+]=] 1 "Floating-point overflow")
+
+run_rift_case(float_conversion_overflow [=[using std
+using std.types
+func main() {
+    value: float = to_float(340282366920938463463374607431768211455)
+}
+]=] 1 "outside the range of float")
+
+run_rift_case(decimal_division_truncates_at_precision_limit [=[using std
+using std.types
+func main() {
+    value: decimal = 0.000000000000000001m / 2
+    println(value)
+}
+]=] 0 "0")

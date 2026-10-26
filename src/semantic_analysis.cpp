@@ -50,6 +50,75 @@ const Function* resolve(const std::string& name, const Functions& functions, con
 
 std::string expressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program);
 
+std::string resolveTypeBuiltin(const std::string& name, const Program& program)
+{
+    static const std::unordered_set<std::string> builtins = {
+        "size_of", "sizeof", "max_value", "min_value", "to_string", "type_of", "typeof",
+        "is_integer", "is_numeric", "is_bool", "to_int", "to_uint", "to_float", "to_double", "to_decimal",
+        "to_int8", "to_int16", "to_int32", "to_int64", "to_int128",
+        "to_uint8", "to_uint16", "to_uint32", "to_uint64", "to_uint128"
+    };
+    constexpr const char* explicitPrefix = "std.types.";
+    constexpr const char* stdPrefix = "types.";
+    if (name.starts_with(explicitPrefix)) return name.substr(std::char_traits<char>::length(explicitPrefix));
+    if (name.starts_with(stdPrefix) &&
+        std::find(program.usingNamespaces.begin(), program.usingNamespaces.end(), "std") != program.usingNamespaces.end())
+        return name.substr(std::char_traits<char>::length(stdPrefix));
+    if (name.find('.') == std::string::npos &&
+        std::find(program.usingNamespaces.begin(), program.usingNamespaces.end(), "std.types") != program.usingNamespaces.end() && builtins.contains(name))
+        return name;
+    return {};
+}
+
+bool isConcreteStdType(const std::string& type)
+{
+    static const std::unordered_set<std::string> types = {
+        "bool", "char", "string", "int", "int8", "int16", "int32", "int64", "int128",
+        "uint8", "uint16", "uint32", "uint64", "uint128", "float", "double", "decimal"
+    };
+    return types.contains(type);
+}
+
+std::string validateTypeBuiltin(const std::string& name, const std::vector<std::string>& args)
+{
+    static const std::unordered_set<std::string> unaryValueFunctions = {
+        "to_string", "type_of", "typeof", "is_integer", "is_numeric", "is_bool"
+    };
+    static const std::unordered_set<std::string> conversions = {
+        "to_int", "to_uint", "to_float", "to_double", "to_decimal",
+        "to_int8", "to_int16", "to_int32", "to_int64", "to_int128",
+        "to_uint8", "to_uint16", "to_uint32", "to_uint64", "to_uint128"
+    };
+    const auto requireOne = [&]() {
+        if (args.size() != 1) throw std::runtime_error("std.types." + name + " expects 1 argument(s)");
+    };
+    if (unaryValueFunctions.contains(name)) {
+        requireOne();
+        if (name == "to_string" && args[0] == "void")
+            throw std::runtime_error("std.types.to_string cannot convert a void value");
+        if (name == "to_string") return "string";
+        if (name == "type_of" || name == "typeof") return "any";
+        return "bool";
+    }
+    if (name == "size_of" || name == "sizeof" || name == "max_value" || name == "min_value") {
+        requireOne();
+        const auto& argument = args[0];
+        if (argument == "void") throw std::runtime_error("std.types." + name + " cannot inspect a void value");
+        if (argument == "type") return "int";
+        if (argument == "any") return name == "size_of" || name == "sizeof" ? "int" : "any";
+        if (name == "size_of" || name == "sizeof") return "int";
+        return argument == "char" || argument == "string" ? "int" : argument;
+    }
+    if (conversions.contains(name)) {
+        requireOne();
+        if (!numeric(args[0])) throw std::runtime_error("std.types." + name + " expects a numeric argument, got " + args[0]);
+        if (name == "to_int") return "int";
+        if (name == "to_uint") return "uint32";
+        return name.substr(3);
+    }
+    throw std::runtime_error("Unknown std.types function: " + name);
+}
+
 std::string inferExpressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program)
 {
     switch (e.type) {
@@ -108,9 +177,20 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
     case Expression::Type::Call: {
         std::vector<std::string> argumentTypes;
         for (const auto& arg : e.arguments) argumentTypes.push_back(expressionType(*arg, scopes, functions, program));
-        if (e.name.starts_with("std.types.") || e.name.starts_with("types.")) return "any";
-        static const std::unordered_set<std::string> typeBuiltins = {"size_of", "sizeof", "max_value", "min_value", "to_string", "type_of", "typeof", "is_integer", "is_numeric", "is_bool", "to_int", "to_uint", "to_float", "to_double", "to_decimal", "to_int8", "to_int16", "to_int32", "to_int64", "to_int128", "to_uint8", "to_uint16", "to_uint32", "to_uint64", "to_uint128"};
-        if (typeBuiltins.contains(e.name)) return e.name == "to_string" ? "string" : "any";
+        const std::string builtin = resolveTypeBuiltin(e.name, program);
+        if (!builtin.empty()) {
+            if (builtin == "size_of" || builtin == "sizeof" || builtin == "max_value" || builtin == "min_value") {
+                for (std::size_t i = 0; i < e.arguments.size(); ++i) {
+                    if (e.arguments[i]->type == Expression::Type::TypeName && !isConcreteStdType(e.arguments[i]->name))
+                        throw std::runtime_error("std.types." + builtin + " does not support type '" + e.arguments[i]->name + "'");
+                }
+            }
+            const std::string result = validateTypeBuiltin(builtin, argumentTypes);
+            if ((builtin == "max_value" || builtin == "min_value") && !e.arguments.empty() &&
+                e.arguments[0]->type == Expression::Type::TypeName)
+                return e.arguments[0]->name == "char" || e.arguments[0]->name == "string" ? "int" : e.arguments[0]->name;
+            return result;
+        }
         const Function* f = resolve(e.name, functions, program);
         if (!f) throw std::runtime_error("Undefined function: " + e.name);
         if (e.arguments.size() != f->parameters.size()) throw std::runtime_error("Function '" + e.name + "' expects " + std::to_string(f->parameters.size()) + " argument(s)");

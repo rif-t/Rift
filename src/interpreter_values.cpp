@@ -286,6 +286,7 @@ RuntimeValue validateValue(RuntimeValue value, const std::string& type, const st
         return Decimal::fromDouble(std::get<double>(value));
     }
     if (type == "string") {
+        if (const auto* typeName = std::get_if<std::string>(&value)) return utf8ToUtf16(*typeName);
         if (!std::holds_alternative<std::u16string>(value)) throw std::runtime_error("Value for '" + name + "' must be string");
         return value;
     }
