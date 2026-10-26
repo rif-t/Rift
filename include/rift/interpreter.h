@@ -13,7 +13,6 @@ public:
     void run(const Program& program);
 
 private:
-    void runFunction(const Function& function);
     void executeStatements(const std::vector<Statement>& statements);
     RuntimeValue callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments);
 

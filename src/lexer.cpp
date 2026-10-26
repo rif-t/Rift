@@ -247,10 +247,6 @@ std::vector<Token> Lexer::tokenize()
                 emit(TokenType::ColonEqual, ":=");
                 advance();
             }
-            else if (current() == ':') {
-                emit(TokenType::Namespace, "::");
-                advance();
-            }
             else {
                 emit(TokenType::Colon, ":");
             }

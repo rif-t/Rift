@@ -32,18 +32,7 @@ void Interpreter::run(const Program& program)
     for (const auto& function : program.functions) {
         if (!functions_.emplace(function.name, &function).second) throw std::runtime_error("Duplicate function: " + function.name);
     }
-    for (const auto& function : program.functions) {
-        if (function.name == "main") {
-            runFunction(function);
-            return;
-        }
-    }
-    throw std::runtime_error("No main function");
-}
-
-void Interpreter::runFunction(const Function& function)
-{
-    callFunction(function.name, {});
+    callFunction("main", {});
 }
 
 RuntimeValue Interpreter::callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments)
@@ -114,7 +103,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                     if (type == "auto") type = inferType(evaluated);
                     value = validateValue(std::move(evaluated), type, name);
                 }
-                scopes_.back()[name] = {value, type, declaration.isConst};
+                scopes_.back()[name] = {std::move(value), std::move(type), declaration.isConst};
             }
         } else if (statement.type == Statement::Type::Assignment) {
             auto scope = scopes_.rbegin();
@@ -138,7 +127,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 value = applyNumericArithmetic(statement.operation, currentValue, right);
             }
             value = validateValue(std::move(value), variable.type, statement.name);
-            variable.value = value;
+            variable.value = std::move(value);
         } else if (statement.type == Statement::Type::Print) {
             std::vector<RuntimeValue> values;
             values.reserve(statement.arguments.size());
