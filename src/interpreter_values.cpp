@@ -2,6 +2,7 @@
 
 #include <iomanip>
 #include <limits>
+#include <cmath>
 #include <sstream>
 #include <stdexcept>
 
@@ -84,6 +85,34 @@ WideInteger applyArithmetic(const std::string& operation, WideInteger a, WideInt
     }
     if (operation == "^") return integerPower(a, b);
     throw std::runtime_error("Unknown operator");
+}
+
+RuntimeValue applyNumericArithmetic(const std::string& operation, const RuntimeValue& left, const RuntimeValue& right)
+{
+    const auto* leftInteger = std::get_if<WideInteger>(&left);
+    const auto* rightInteger = std::get_if<WideInteger>(&right);
+    const auto* leftFloat = std::get_if<long double>(&left);
+    const auto* rightFloat = std::get_if<long double>(&right);
+    if ((!leftInteger && !leftFloat) || (!rightInteger && !rightFloat))
+        throw std::runtime_error("Arithmetic operators require numeric values");
+    if (leftInteger && rightInteger) return applyArithmetic(operation, *leftInteger, *rightInteger);
+
+    const long double a = leftFloat ? *leftFloat : std::stold(leftInteger->toString());
+    const long double b = rightFloat ? *rightFloat : std::stold(rightInteger->toString());
+    long double result;
+    if (operation == "+") result = a + b;
+    else if (operation == "-") result = a - b;
+    else if (operation == "*") result = a * b;
+    else if (operation == "/") {
+        if (b == 0) throw std::runtime_error("Division by zero");
+        result = a / b;
+    } else if (operation == "%") {
+        if (b == 0) throw std::runtime_error("Remainder by zero");
+        result = std::fmod(a, b);
+    } else if (operation == "^") result = std::pow(a, b);
+    else throw std::runtime_error("Operator '" + operation + "' is not supported for floating-point values");
+    if (!std::isfinite(result)) throw std::runtime_error("Floating-point overflow");
+    return result;
 }
 
 int compareIntegers(const WideInteger& a, const WideInteger& b)

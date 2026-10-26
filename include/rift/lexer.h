@@ -63,13 +63,16 @@ enum class TokenType
     LeftParen,
     RightParen,
     LeftBrace,
-    RightBrace
+    RightBrace,
+    EndOfFile
 };
 
 struct Token
 {
     TokenType type;
     std::string text;
+    std::size_t line = 1;
+    std::size_t column = 1;
 };
 
 class Lexer
@@ -85,4 +88,6 @@ private:
 
     std::string source_;
     size_t position_ = 0;
+    std::size_t line_ = 1;
+    std::size_t column_ = 1;
 };

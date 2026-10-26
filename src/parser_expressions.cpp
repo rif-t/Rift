@@ -222,5 +222,6 @@ std::unique_ptr<Expression> Parser::parsePrimary()
         return expression;
     }
 
-    throw std::runtime_error("Expected expression");
+    throw std::runtime_error("Expected expression at line " + std::to_string(current().line) +
+        ", column " + std::to_string(current().column));
 }

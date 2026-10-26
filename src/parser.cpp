@@ -3,6 +3,29 @@
 #include <algorithm>
 #include <stdexcept>
 
+namespace {
+std::string tokenName(TokenType type)
+{
+    switch (type) {
+    case TokenType::LeftParen: return "'('";
+    case TokenType::RightParen: return "')'";
+    case TokenType::LeftBrace: return "'{'";
+    case TokenType::RightBrace: return "'}'";
+    case TokenType::Colon: return "':'";
+    case TokenType::Equal: return "'='";
+    case TokenType::Identifier: return "identifier";
+    case TokenType::Number: return "number";
+    case TokenType::EndOfFile: return "end of file";
+    default: return "token";
+    }
+}
+std::string tokenDescription(const Token& token)
+{
+    const std::string actual = token.type == TokenType::EndOfFile ? "end of file" : "'" + token.text + "'";
+    return actual + " at line " + std::to_string(token.line) + ", column " + std::to_string(token.column);
+}
+}
+
 Parser::Parser(const std::vector<Token>& tokens)
     : tokens_(tokens)
 {
@@ -10,18 +33,14 @@ Parser::Parser(const std::vector<Token>& tokens)
 
 const Token& Parser::current() const
 {
-    if (position_ >= tokens_.size()) {
-        throw std::runtime_error("Unexpected end of file");
-    }
-
+    static const Token eof{TokenType::EndOfFile, "<end of file>", 1, 1};
+    if (position_ >= tokens_.size()) return tokens_.empty() ? eof : tokens_.back();
     return tokens_[position_];
 }
 
 const Token& Parser::peek() const
 {
-    if (position_ + 1 >= tokens_.size()) {
-        throw std::runtime_error("Unexpected end of file");
-    }
+    if (position_ + 1 >= tokens_.size()) return tokens_.empty() ? current() : tokens_.back();
     return tokens_[position_ + 1];
 }
 
@@ -36,9 +55,7 @@ const Token& Parser::consume()
 void Parser::expect(TokenType type)
 {
     if (current().type != type) {
-        throw std::runtime_error(
-            "Unexpected token: " + current().text
-        );
+        throw std::runtime_error("Expected " + tokenName(type) + ", found " + tokenDescription(current()));
     }
 
     consume();
@@ -48,7 +65,7 @@ Program Parser::parse()
 {
     Program program;
 
-    while (position_ < tokens_.size()) {
+    while (current().type != TokenType::EndOfFile) {
         if (current().type == TokenType::Using) {
             consume();
             if (current().type != TokenType::Identifier) throw std::runtime_error("Expected namespace name after 'using'");
@@ -89,7 +106,7 @@ void Parser::parseNamespace(Program& program)
     expect(TokenType::LeftBrace);
     currentNamespace_ = previousNamespace.empty() ? localName : previousNamespace + "." + localName;
     try {
-        while (current().type != TokenType::RightBrace) {
+        while (current().type != TokenType::RightBrace && current().type != TokenType::EndOfFile) {
             if (current().type == TokenType::Func) program.functions.push_back(parseFunction());
             else if (current().type == TokenType::NamespaceKeyword) parseNamespace(program);
             else throw std::runtime_error("Namespaces can contain function declarations or nested namespaces");
@@ -144,7 +161,7 @@ std::string Parser::parseType(bool allowVoid)
         type.type != TokenType::StringType && type.type != TokenType::CharType &&
         !(type.type == TokenType::Identifier && (type.text == "float" || type.text == "double" || type.text == "decimal" || type.text == "any")) &&
         !(allowVoid && type.type == TokenType::VoidType)) {
-        throw std::runtime_error("Expected type");
+        throw std::runtime_error("Expected type, found " + tokenDescription(type));
     }
     consume();
     return type.text;
@@ -233,7 +250,8 @@ std::vector<Statement> Parser::parseBlock()
 {
     expect(TokenType::LeftBrace);
     std::vector<Statement> statements;
-    while (current().type != TokenType::RightBrace) statements.push_back(parseStatement());
+    while (current().type != TokenType::RightBrace && current().type != TokenType::EndOfFile) statements.push_back(parseStatement());
+    if (current().type == TokenType::EndOfFile) throw std::runtime_error("Expected '}', found " + tokenDescription(current()));
     expect(TokenType::RightBrace);
     return statements;
 }

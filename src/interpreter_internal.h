@@ -12,6 +12,7 @@ struct ReturnSignal {
 };
 
 WideInteger applyArithmetic(const std::string& operation, WideInteger left, WideInteger right);
+RuntimeValue applyNumericArithmetic(const std::string& operation, const RuntimeValue& left, const RuntimeValue& right);
 WideInteger negate(WideInteger value);
 bool compareValues(const RuntimeValue& left, const RuntimeValue& right, const std::string& operation);
 bool requireBoolean(const RuntimeValue& value, const std::string& context);

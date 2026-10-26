@@ -106,6 +106,13 @@ func main() {
 They currently use the same floating-point runtime representation; `decimal`
 does not yet provide exact base-10 arithmetic.
 
+Mixed integer/floating-point arithmetic promotes to the floating-point runtime
+representation. Floating-point `+=`, `-=`, `*=`, `/=`, `%=`, `^=`, `++`, and
+`--` use the same arithmetic rules as expressions. Division and remainder by
+zero are errors, and a non-finite arithmetic result is reported as overflow.
+Floating-point to integer conversions truncate toward zero and reject values
+outside the target integer range.
+
 ## Type inference and `any`
 
 Use `:=` to infer a local variable's type from its initial value. Integer

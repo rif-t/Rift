@@ -94,7 +94,11 @@ RuntimeValue typeBuiltin(const std::string& name, const std::vector<RuntimeValue
         RuntimeValue source = args[0];
         if (std::holds_alternative<long double>(source)) {
             const long double number = std::trunc(std::get<long double>(source));
-            if (!std::isfinite(number) || number < -1.7014118346046923e38L || number > 3.4028236692093846e38L)
+            const bool isUnsignedTarget = type.starts_with("uint");
+            const long double upperExclusive = std::ldexp(1.0L, isUnsignedTarget ? 128 : 127);
+            if (!std::isfinite(number) ||
+                (isUnsignedTarget ? (number < 0 || number >= upperExclusive)
+                                  : (number < -upperExclusive || number >= upperExclusive)))
                 throw std::runtime_error("Numeric conversion is outside the 128-bit integer range");
             std::ostringstream text; text << std::fixed << std::setprecision(0) << number;
             const std::string digits = text.str();
@@ -170,22 +174,7 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
             };
             return toUtf16(l) + toUtf16(r);
         }
-        if ((std::holds_alternative<long double>(l) || std::holds_alternative<WideInteger>(l)) &&
-            (std::holds_alternative<long double>(r) || std::holds_alternative<WideInteger>(r)) &&
-            (std::holds_alternative<long double>(l) || std::holds_alternative<long double>(r))) {
-            const auto toFloat = [](const RuntimeValue& value) {
-                return std::holds_alternative<long double>(value) ? std::get<long double>(value) : std::stold(std::get<WideInteger>(value).toString());
-            };
-            const auto a = toFloat(l), b = toFloat(r);
-            if (expression.operation == "+") return a + b;
-            if (expression.operation == "-") return a - b;
-            if (expression.operation == "*") return a * b;
-            if (expression.operation == "/") { if (b == 0) throw std::runtime_error("Division by zero"); return a / b; }
-            throw std::runtime_error("Operator is not supported for floating-point values");
-        }
-        if (!std::holds_alternative<WideInteger>(l) || !std::holds_alternative<WideInteger>(r)) throw std::runtime_error("These values cannot be used with arithmetic operators");
-        WideInteger a = std::get<WideInteger>(l), b = std::get<WideInteger>(r);
-        return applyArithmetic(expression.operation, a, b);
+        return applyNumericArithmetic(expression.operation, l, r);
     }
     case Expression::Type::Conditional: {
         const bool condition = requireBoolean(evaluate(*expression.left), "Conditional expression condition");

@@ -19,3 +19,12 @@ target_include_directories(rift
     PRIVATE
         ${PROJECT_SOURCE_DIR}/include/rift
 )
+
+enable_testing()
+add_test(
+    NAME rift_priority0_regressions
+    COMMAND ${CMAKE_COMMAND}
+        "-DRIFT_EXECUTABLE=$<TARGET_FILE:rift>"
+        "-DRIFT_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests"
+        -P "${PROJECT_SOURCE_DIR}/tests/priority0.cmake"
+)

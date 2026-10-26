@@ -15,6 +15,12 @@ std::string inferType(const RuntimeValue& value)
     if (std::holds_alternative<char16_t>(value)) return "char";
     throw std::runtime_error("Cannot infer a type from a void value");
 }
+
+template <typename ScopeStack>
+struct ScopePopGuard {
+    ScopeStack& scopes;
+    ~ScopePopGuard() { scopes.pop_back(); }
+};
 }
 
 void Interpreter::run(const Program& program)
@@ -121,15 +127,13 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 RuntimeValue currentValue = variable.value;
                 if (std::holds_alternative<std::monostate>(currentValue)) throw std::runtime_error("Compound assignment to uninitialized variable: " + statement.name);
                 if (std::holds_alternative<bool>(currentValue)) throw std::runtime_error("Boolean variables do not support compound arithmetic assignment");
-                WideInteger right;
+                RuntimeValue right;
                 if (statement.expression) {
-                    RuntimeValue evaluated = evaluate(*statement.expression);
-                    if (std::holds_alternative<bool>(evaluated)) throw std::runtime_error("Boolean values cannot be used with arithmetic operators");
-                    right = std::get<WideInteger>(evaluated);
+                    right = evaluate(*statement.expression);
                 } else {
                     right = WideInteger{UInt128{0, 1}, false, false};
                 }
-                value = applyArithmetic(statement.operation, std::get<WideInteger>(currentValue), right);
+                value = applyNumericArithmetic(statement.operation, currentValue, right);
             }
             value = validateValue(std::move(value), variable.type, statement.name);
             variable.value = value;
@@ -152,16 +156,16 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
             for (const auto& branch : statement.branches) {
                 if (requireBoolean(evaluate(*branch.condition), "if condition")) {
                     scopes_.emplace_back();
+                    ScopePopGuard guard{scopes_};
                     executeStatements(branch.statements);
-                    scopes_.pop_back();
                     matched = true;
                     break;
                 }
             }
             if (!matched && !statement.elseStatements.empty()) {
                 scopes_.emplace_back();
+                ScopePopGuard guard{scopes_};
                 executeStatements(statement.elseStatements);
-                scopes_.pop_back();
             }
         } else if (statement.type == Statement::Type::Return) {
             ReturnSignal signal;

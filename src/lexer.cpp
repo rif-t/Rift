@@ -19,6 +19,8 @@ char Lexer::current() const
 
 void Lexer::advance()
 {
+    if (current() == '\n') { ++line_; column_ = 1; }
+    else ++column_;
     position_++;
 }
 
@@ -27,6 +29,11 @@ std::vector<Token> Lexer::tokenize()
     std::vector<Token> tokens;
 
     while (position_ < source_.size()) {
+        const std::size_t tokenLine = line_;
+        const std::size_t tokenColumn = column_;
+        auto emit = [&](TokenType type, const std::string& text) {
+            tokens.push_back({type, text, tokenLine, tokenColumn});
+        };
         char c = current();
 
         // Whitespace
@@ -48,55 +55,55 @@ std::vector<Token> Lexer::tokenize()
             }
 
             if (text == "func") {
-                tokens.push_back({ TokenType::Func, text });
+                emit(TokenType::Func, text);
             }
             else if (text == "using") {
-                tokens.push_back({ TokenType::Using, text });
+                emit(TokenType::Using, text);
             }
             else if (text == "return") {
-                tokens.push_back({ TokenType::Return, text });
+                emit(TokenType::Return, text);
             }
             else if (text == "namespace") {
-                tokens.push_back({ TokenType::NamespaceKeyword, text });
+                emit(TokenType::NamespaceKeyword, text);
             }
-            else if (text == "const") tokens.push_back({TokenType::Const, text});
+            else if (text == "const") emit(TokenType::Const, text);
             else if (text == "int") {
-                tokens.push_back({ TokenType::Int, text });
+                emit(TokenType::Int, text);
             }
             else if (text == "bool") {
-                tokens.push_back({ TokenType::Bool, text });
+                emit(TokenType::Bool, text);
             }
             else if (text == "string") {
-                tokens.push_back({ TokenType::StringType, text });
+                emit(TokenType::StringType, text);
             }
             else if (text == "char") {
-                tokens.push_back({ TokenType::CharType, text });
+                emit(TokenType::CharType, text);
             }
             else if (text == "void") {
-                tokens.push_back({ TokenType::VoidType, text });
+                emit(TokenType::VoidType, text);
             }
-            else if (text == "float" || text == "double" || text == "decimal") tokens.push_back({TokenType::Identifier, text});
+            else if (text == "float" || text == "double" || text == "decimal") emit(TokenType::Identifier, text);
             else if (text == "true") {
-                tokens.push_back({ TokenType::True, text });
+                emit(TokenType::True, text);
             }
             else if (text == "false") {
-                tokens.push_back({ TokenType::False, text });
+                emit(TokenType::False, text);
             }
             else if (text == "and") {
-                tokens.push_back({ TokenType::And, text });
+                emit(TokenType::And, text);
             }
             else if (text == "or") {
-                tokens.push_back({ TokenType::Or, text });
+                emit(TokenType::Or, text);
             }
             else if (text == "not") {
-                tokens.push_back({ TokenType::Not, text });
+                emit(TokenType::Not, text);
             }
             else if (text == "int8" || text == "int16" || text == "int32" || text == "int64" || text == "int128" ||
                      text == "uint8" || text == "uint16" || text == "uint32" || text == "uint64" || text == "uint128") {
-                tokens.push_back({ TokenType::IntegerType, text });
+                emit(TokenType::IntegerType, text);
             }
             else {
-                tokens.push_back({ TokenType::Identifier, text });
+                emit(TokenType::Identifier, text);
             }
 
             continue;
@@ -115,7 +122,7 @@ std::vector<Token> Lexer::tokenize()
                 while (std::isdigit(static_cast<unsigned char>(current()))) { number += current(); advance(); }
             }
 
-            tokens.push_back({ TokenType::Number, number });
+            emit(TokenType::Number, number);
 
             continue;
         }
@@ -144,7 +151,7 @@ std::vector<Token> Lexer::tokenize()
             }
             if (position_ >= source_.size()) throw std::runtime_error("Unterminated string literal");
             advance();
-            tokens.push_back({TokenType::StringLiteral, text});
+            emit(TokenType::StringLiteral, text);
             continue;
         }
 
@@ -181,52 +188,52 @@ std::vector<Token> Lexer::tokenize()
             }
             if (current() != '\'') throw std::runtime_error("Character literal must contain exactly one character");
             advance();
-            tokens.push_back({TokenType::CharacterLiteral, value});
+            emit(TokenType::CharacterLiteral, value);
             continue;
         }
 
         if (c == ',') {
-            tokens.push_back({TokenType::Comma, ","});
+            emit(TokenType::Comma, ",");
             advance();
             continue;
         }
 
         if (c == '.') {
-            tokens.push_back({TokenType::Dot, "."});
+            emit(TokenType::Dot, ".");
             advance();
             continue;
         }
 
         if (c == ';') {
-            tokens.push_back({TokenType::Semicolon, ";"});
+            emit(TokenType::Semicolon, ";");
             advance();
             continue;
         }
 
         // (
         if (c == '(') {
-            tokens.push_back({ TokenType::LeftParen, "(" });
+            emit(TokenType::LeftParen, "(");
             advance();
             continue;
         }
 
         // )
         if (c == ')') {
-            tokens.push_back({ TokenType::RightParen, ")" });
+            emit(TokenType::RightParen, ")");
             advance();
             continue;
         }
 
         // {
         if (c == '{') {
-            tokens.push_back({ TokenType::LeftBrace, "{" });
+            emit(TokenType::LeftBrace, "{");
             advance();
             continue;
         }
 
         // }
         if (c == '}') {
-            tokens.push_back({ TokenType::RightBrace, "}" });
+            emit(TokenType::RightBrace, "}");
             advance();
             continue;
         }
@@ -237,15 +244,15 @@ std::vector<Token> Lexer::tokenize()
 
             // :=
             if (current() == '=') {
-                tokens.push_back({ TokenType::ColonEqual, ":=" });
+                emit(TokenType::ColonEqual, ":=");
                 advance();
             }
             else if (current() == ':') {
-                tokens.push_back({TokenType::Namespace, "::"});
+                emit(TokenType::Namespace, "::");
                 advance();
             }
             else {
-                tokens.push_back({ TokenType::Colon, ":" });
+                emit(TokenType::Colon, ":");
             }
 
             continue;
@@ -254,15 +261,15 @@ std::vector<Token> Lexer::tokenize()
         // =
         if (c == '=') {
             advance();
-            if (current() == '=') { tokens.push_back({TokenType::EqualEqual, "=="}); advance(); }
-            else tokens.push_back({ TokenType::Equal, "=" });
+            if (current() == '=') { emit(TokenType::EqualEqual, "=="); advance(); }
+            else emit(TokenType::Equal, "=");
             continue;
         }
 
         if (c == '!') {
             advance();
-            if (current() == '=') { tokens.push_back({TokenType::NotEqual, "!="}); advance(); }
-            else tokens.push_back({TokenType::Not, "!"});
+            if (current() == '=') { emit(TokenType::NotEqual, "!="); advance(); }
+            else emit(TokenType::Not, "!");
             continue;
         }
         if (c == '<' || c == '>') {
@@ -270,7 +277,7 @@ std::vector<Token> Lexer::tokenize()
             advance();
             const bool equal = current() == '=';
             if (equal) advance();
-            tokens.push_back({comparison == '<' ? (equal ? TokenType::LessEqual : TokenType::Less) : (equal ? TokenType::GreaterEqual : TokenType::Greater), equal ? std::string(1, comparison) + "=" : std::string(1, comparison)});
+            emit(comparison == '<' ? (equal ? TokenType::LessEqual : TokenType::Less) : (equal ? TokenType::GreaterEqual : TokenType::Greater), equal ? std::string(1, comparison) + "=" : std::string(1, comparison));
             continue;
         }
         if (c == '&' || c == '|') {
@@ -278,11 +285,11 @@ std::vector<Token> Lexer::tokenize()
             advance();
             if (current() != logical) throw std::runtime_error("Use && for logical AND and || for logical OR");
             advance();
-            tokens.push_back({logical == '&' ? TokenType::And : TokenType::Or, logical == '&' ? "&&" : "||"});
+            emit(logical == '&' ? TokenType::And : TokenType::Or, logical == '&' ? "&&" : "||");
             continue;
         }
         if (c == '?') {
-            tokens.push_back({TokenType::Question, "?"});
+            emit(TokenType::Question, "?");
             advance();
             continue;
         }
@@ -290,19 +297,19 @@ std::vector<Token> Lexer::tokenize()
         // +
         if (c == '+') {
             advance();
-            if (current() == '+') { tokens.push_back({ TokenType::Increment, "++" }); advance(); }
-            else if (current() == '=') { tokens.push_back({ TokenType::PlusEqual, "+=" }); advance(); }
-            else tokens.push_back({ TokenType::Plus, "+" });
+            if (current() == '+') { emit(TokenType::Increment, "++"); advance(); }
+            else if (current() == '=') { emit(TokenType::PlusEqual, "+="); advance(); }
+            else emit(TokenType::Plus, "+");
             continue;
         }
 
         // -
         if (c == '-') {
             advance();
-            if (current() == '>') { tokens.push_back({TokenType::Arrow, "->"}); advance(); }
-            else if (current() == '-') { tokens.push_back({ TokenType::Decrement, "--" }); advance(); }
-            else if (current() == '=') { tokens.push_back({ TokenType::MinusEqual, "-=" }); advance(); }
-            else tokens.push_back({ TokenType::Minus, "-" });
+            if (current() == '>') { emit(TokenType::Arrow, "->"); advance(); }
+            else if (current() == '-') { emit(TokenType::Decrement, "--"); advance(); }
+            else if (current() == '=') { emit(TokenType::MinusEqual, "-="); advance(); }
+            else emit(TokenType::Minus, "-");
             continue;
         }
 
@@ -311,12 +318,12 @@ std::vector<Token> Lexer::tokenize()
             advance();
 
             if (current() == '*') {
-                tokens.push_back({ TokenType::Power, "**" });
+                emit(TokenType::Power, "**");
                 advance();
             }
-            else if (current() == '=') { tokens.push_back({ TokenType::MultiplyEqual, "*=" }); advance(); }
+            else if (current() == '=') { emit(TokenType::MultiplyEqual, "*="); advance(); }
             else {
-                tokens.push_back({ TokenType::Multiply, "*" });
+                emit(TokenType::Multiply, "*");
             }
 
             continue;
@@ -342,28 +349,29 @@ std::vector<Token> Lexer::tokenize()
                 }
                 if (depth != 0) throw std::runtime_error("Unterminated block comment");
             }
-            else if (current() == '=') { tokens.push_back({ TokenType::DivideEqual, "/=" }); advance(); }
-            else tokens.push_back({ TokenType::Divide, "/" });
+            else if (current() == '=') { emit(TokenType::DivideEqual, "/="); advance(); }
+            else emit(TokenType::Divide, "/");
             continue;
         }
 
         if (c == '%') {
             advance();
-            if (current() == '=') { tokens.push_back({ TokenType::RemainderEqual, "%=" }); advance(); }
-            else tokens.push_back({ TokenType::Remainder, "%" });
+            if (current() == '=') { emit(TokenType::RemainderEqual, "%="); advance(); }
+            else emit(TokenType::Remainder, "%");
             continue;
         }
 
         if (c == '^') {
             advance();
-            if (current() == '=') { tokens.push_back({ TokenType::PowerEqual, "^=" }); advance(); }
-            else tokens.push_back({ TokenType::Power, "^" });
+            if (current() == '=') { emit(TokenType::PowerEqual, "^="); advance(); }
+            else emit(TokenType::Power, "^");
             continue;
         }
 
-        // Unknown character
-        advance();
+        throw std::runtime_error("Unexpected character '" + std::string(1, c) + "' at line " +
+            std::to_string(line_) + ", column " + std::to_string(column_));
     }
 
+    tokens.push_back({TokenType::EndOfFile, "<end of file>", line_, column_});
     return tokens;
 }
