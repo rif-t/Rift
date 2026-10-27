@@ -146,9 +146,10 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
                 if (!state->limit) throw std::runtime_error("Loop has no iteration limit");
                 return WideInteger{UInt128{0, *state->limit}, false, true, 64};
             }
-            if (member == "break") throw LoopControlSignal{target, LoopAction::Break};
-            if (member == "continue") throw LoopControlSignal{target, LoopAction::Continue};
-            if (member == "restart") throw LoopControlSignal{target, LoopAction::Restart};
+            const std::string signalTarget = target == "loop" ? "" : target;
+            if (member == "break") throw LoopControlSignal{signalTarget, LoopAction::Break};
+            if (member == "continue") throw LoopControlSignal{signalTarget, LoopAction::Continue};
+            if (member == "restart") throw LoopControlSignal{signalTarget, LoopAction::Restart};
         }
         for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
             auto it = scope->find(expression.name);
@@ -225,7 +226,7 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
                 state->skipsRemaining += count;
                 return std::monostate{};
             }
-            if (requireBoolean(argument, "loop.break_if argument")) throw LoopControlSignal{target, LoopAction::Break};
+            if (requireBoolean(argument, "loop.break_if argument")) throw LoopControlSignal{target == "loop" ? "" : target, LoopAction::Break};
             return std::monostate{};
         }
         std::string builtinName;

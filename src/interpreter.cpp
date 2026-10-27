@@ -227,7 +227,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                             executeStatements(statement.loopStatements);
                         } catch (const LoopControlSignal& signal) {
                             const std::string& currentName = loopStates_.back().name;
-                            if (signal.target != "loop" && signal.target != currentName) throw;
+                            if (!signal.target.empty() && signal.target != currentName) throw;
                             if (signal.action == LoopAction::Break) shouldBreak = true;
                             else if (signal.action == LoopAction::Restart) shouldRestart = true;
                         }
@@ -248,7 +248,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 executeStatements(statement.loopElseStatements);
             }
         } else if (statement.type == Statement::Type::Break) {
-            throw LoopControlSignal{statement.name.empty() ? "loop" : statement.name, LoopAction::Break};
+            throw LoopControlSignal{statement.name, LoopAction::Break};
         } else if (statement.type == Statement::Type::Return) {
             ReturnSignal signal;
             if (statement.expression) signal.value = evaluate(*statement.expression);
