@@ -14,7 +14,7 @@ func main() {
     value--
     println(value)
 }
-]=] 0 "6.75\n0.25")
+]=] 0 "6.75\n0.25\n")
 
 run_rift_case(branch_return [=[using std
 func answer() -> int {
@@ -26,9 +26,9 @@ func answer() -> int {
     return 0
 }
 func main() { println(answer()) }
-]=] 0 "42")
+]=] 0 "42\n")
 
-run_rift_case(branch_runtime_error [=[func main() {
+run_rift_case_contains(branch_runtime_error [=[func main() {
     if true {
         if true {
             value: int = 1 / 0
@@ -41,21 +41,21 @@ run_rift_case(format_explicit_index [=[using std
 func main() {
     println("{1}, {0}, {1}", "first", "second")
 }
-]=] 0 "second, first, second")
+]=] 0 "second, first, second\n")
 
-run_rift_case(format_mixed_indexing [=[using std
+run_rift_case_contains(format_mixed_indexing [=[using std
 func main() {
     println("{0} {}", "value", "other")
 }
 ]=] 1 "Cannot mix automatic and manual argument indexing")
 
-run_rift_case(format_invalid_index [=[using std
+run_rift_case_contains(format_invalid_index [=[using std
 func main() {
     println("{1x}", "value", "other")
 }
 ]=] 1 "Invalid field in format string")
 
-run_rift_case(format_unused_argument [=[using std
+run_rift_case_contains(format_unused_argument [=[using std
 func main() {
     println("{}", "used", "unused")
 }
@@ -68,7 +68,7 @@ func main() {
     text += " language"
     println(text)
 }
-]=] 0 "Rift! language")
+]=] 0 "Rift! language\n")
 
 run_rift_case(function_overloads_exact_and_fallback [=[using std
 func describe(value: int) -> string { return "integer" }
@@ -77,9 +77,9 @@ func describe(value: any) -> string { return "other" }
 func main() {
     println("{} {} {}", describe(42), describe("rift"), describe(true))
 }
-]=] 0 "integer text other")
+]=] 0 "integer text other\n")
 
-run_rift_case(function_overload_ambiguous_conversion [=[using std
+run_rift_case_contains(function_overload_ambiguous_conversion [=[using std
 func choose(value: int64) -> string { return "wide integer" }
 func choose(value: double) -> string { return "floating point" }
 func main() {
@@ -88,7 +88,7 @@ func main() {
 }
 ]=] 1 "Ambiguous overload for function 'choose'")
 
-run_rift_case(function_overload_duplicate_signature [=[func same(first: int) -> int { return first }
+run_rift_case_contains(function_overload_duplicate_signature [=[func same(first: int) -> int { return first }
 func same(second: int32) -> int { return second }
 func main() {}
 ]=] 1 "Duplicate function overload: same")
@@ -101,7 +101,7 @@ func main() {
     }
     println("{}", total)
 }
-]=] 0 "45")
+]=] 0 "45\n")
 
 run_rift_case(for_loop_named_break [=[using std
 func main() {
@@ -114,7 +114,7 @@ func main() {
     }
     println("{}", count)
 }
-]=] 0 "1")
+]=] 0 "1\n")
 
 run_rift_case(for_loop_unlabeled_break [=[using std
 func main() {
@@ -125,9 +125,9 @@ func main() {
     }
     println("{}", count)
 }
-]=] 0 "3")
+]=] 0 "3\n")
 
-run_rift_case(break_outside_loop [=[func main() {
+run_rift_case_contains(break_outside_loop [=[func main() {
     break
 }
 ]=] 1 "break can only be used inside a loop")
@@ -142,7 +142,7 @@ func main() {
         println("normal {}", value)
     }
 }
-]=] 0 "normal 3")
+]=] 0 "normal 3\n")
 
 run_rift_case(while_loop_continue_and_break_if [=[using std
 func main() {
@@ -156,14 +156,14 @@ func main() {
     }
     println("value {}", value)
 }
-]=] 0 "value 4")
+]=] 0 "value 4\n")
 
-run_rift_case(while_loop_rejects_restart [=[func main() {
+run_rift_case_contains(while_loop_rejects_restart [=[func main() {
     while true { loop.restart }
 }
 ]=] 1 "restart is only available for for loops")
 
-run_rift_case(while_loop_rejects_skip [=[func main() {
+run_rift_case_contains(while_loop_rejects_skip [=[func main() {
     while true { loop.skip(1) }
 }
 ]=] 1 "skip is only available for for loops")

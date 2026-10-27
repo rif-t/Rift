@@ -24,8 +24,7 @@ exclude vectors, strings, and allocator overhead.
 
 Workloads cover parsing a 3,000-declaration program, interpreter setup, recursive
 arithmetic/function calls, local-variable lookup, string concatenation, and
-100-level nested expressions. Rift does not currently implement loop syntax;
-recursion is the closest available repeated-control-flow workload. The final
+100-level nested expressions. They do not yet include a loop workload. The final
 microbenchmarks measure `UInt128` multiplication, division, and decimal
 formatting. Runtime timings include semantic validation and interpreter setup
 once per run.

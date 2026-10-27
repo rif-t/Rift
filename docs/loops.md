@@ -1,4 +1,4 @@
-# For loops
+# Loops
 
 Rift `for` loops support an initializer, condition, and post statement. The
 initializer can declare a variable scoped to the loop. Parentheses around the
@@ -34,16 +34,18 @@ The following controls are available on `loop` or a named loop:
 - `.iteration` reads the number of body entries. It starts at `1` and is
   read-only. Skipped bodies do not increment it.
 - `.limit = n` sets a writable maximum number of body executions. There is no
-  limit by default. Reaching it ends the loop normally without another body
-  execution. Reading `.limit` before setting it raises a runtime error.
+  limit by default. It must be a non-negative integer no larger than `uint64`.
+  Reaching it ends the loop normally without another body execution. Reading
+  `.limit` before setting it raises a runtime error.
 - `.break` exits the target loop. `break` and `break name` remain supported.
 - `.break_if(condition)` exits only when its boolean argument is true.
 - `.continue` skips the rest of the current body and runs the post statement.
 - `.restart` resumes at the next condition check without rerunning the
-  initializer. It resets the iteration count. Restarting suppresses the loop's
-  `else` block.
+  initializer. It resets the iteration count and clears the current limit.
+  Restarting suppresses the loop's `else` block.
 - `loop.skip(n)` skips the next `n` body executions. Each skipped iteration
-  still checks the loop condition and runs the post statement.
+  still checks the loop condition and runs the post statement. The count must
+  be a non-negative integer no larger than `uint64`; zero has no effect.
 
 For example:
 

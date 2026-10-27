@@ -10,9 +10,9 @@ func main() {
     value: int16 = 12
     inspect(value)
 }
-]=] 0 "int16\n2")
+]=] 0 "int16\n2\n")
 
-run_rift_case(validate_call_before_execution [=[using std
+run_rift_case_contains(validate_call_before_execution [=[using std
 func takes_int(value: int) {
 }
 func main() {
@@ -21,7 +21,7 @@ func main() {
 }
 ]=] 1 "must be int, got string")
 
-run_rift_case(validate_return_type_before_execution [=[using std
+run_rift_case_contains(validate_return_type_before_execution [=[using std
 func wrong() -> int {
     return "wrong"
 }
@@ -31,7 +31,7 @@ func main() {
 }
 ]=] 1 "Return value must be int, got string")
 
-run_rift_case(validate_missing_return_before_execution [=[func answer() -> int {
+run_rift_case_contains(validate_missing_return_before_execution [=[func answer() -> int {
     if true {
         return 1
     }
@@ -48,7 +48,7 @@ func main() {
     println(value)
     println(type_of(to_int16(4)))
 }
-]=] 0 "3.5\nint16")
+]=] 0 "3.5\nint16\n")
 
 run_rift_case(floating_types [=[using std
 using std.types
@@ -77,7 +77,7 @@ func main() {
     println(to_int8(to_decimal(-12.9)))
     println(min_value(decimal) < max_value(decimal))
 }
-]=] 0 "float 4 16777216\ndouble 8 9007199254740992\nfloat 4\ndecimal 16 0.3\n0.123456789012345678\ntrue\n0.3\ntrue\n0.333333333333333333\n-12\ntrue")
+]=] 0 "float 4 16777216\ndouble 8 9007199254740992\nfloat 4\ndecimal 16 0.3\n0.123456789012345678\ntrue\n0.3\ntrue\n0.333333333333333333\n-12\ntrue\n")
 
 run_rift_case(decimal_division [=[using std
 using std.types
@@ -85,7 +85,7 @@ func main() {
     value: decimal = to_decimal(1) / to_decimal(7)
     println(value)
 }
-]=] 0 "0.142857142857142857")
+]=] 0 "0.142857142857142857\n")
 
 run_rift_case(implicit_numeric_to_integer [=[using std
 func main() {
@@ -94,16 +94,16 @@ func main() {
     byte: uint8 = 255.9
     println(whole, " ", negative, " ", byte)
 }
-]=] 0 "4 -4 255")
+]=] 0 "4 -4 255\n")
 
-run_rift_case(implicit_integer_range_check [=[using std
+run_rift_case_contains(implicit_integer_range_check [=[using std
 func main() {
     value: int8 = 128.0
     println(value)
 }
 ]=] 1 "outside the range of int8")
 
-run_rift_case(const_assignment_rejected_before_execution [=[using std
+run_rift_case_contains(const_assignment_rejected_before_execution [=[using std
 func main() {
     const value: int = 1
     println("must not print")
@@ -111,14 +111,14 @@ func main() {
 }
 ]=] 1 "Cannot assign to const variable: value")
 
-run_rift_case(incompatible_comparison_rejected [=[using std
+run_rift_case_contains(incompatible_comparison_rejected [=[using std
 func main() {
     println("must not print")
     value: bool = "one" == 1
 }
 ]=] 1 "Comparison operands must have compatible types")
 
-run_rift_case(invalid_compound_assignment_rejected [=[using std
+run_rift_case_contains(invalid_compound_assignment_rejected [=[using std
 func main() {
     text: string = "hello"
     println("must not print")
@@ -133,7 +133,7 @@ func main() {
     copied := original
     println(type_of(copied), " ", copied)
 }
-]=] 0 "uint64 5000000000")
+]=] 0 "uint64 5000000000\n")
 
 run_rift_case(conditional_numeric_promotion [=[using std
 using std.types
@@ -142,14 +142,14 @@ func main() {
     float_branch := false ? 1 : 2.5
     println(type_of(integer_branch), " ", integer_branch, " ", type_of(float_branch), " ", float_branch)
 }
-]=] 0 "double 1 double 2.5")
+]=] 0 "double 1 double 2.5\n")
 
 run_rift_case(negative_fraction_truncates_to_unsigned_zero [=[using std
 using std.types
 func main() {
     println(to_uint8(-0.5))
 }
-]=] 0 "0")
+]=] 0 "0\n")
 
 run_rift_case(any_boolean_operation [=[using std
 func invert(value: any) -> bool {
@@ -158,9 +158,9 @@ func invert(value: any) -> bool {
 func main() {
     println(invert(true))
 }
-]=] 0 "false")
+]=] 0 "false\n")
 
-run_rift_case(any_boolean_runtime_check [=[using std
+run_rift_case_contains(any_boolean_runtime_check [=[using std
 func invert(value: any) -> bool {
     return !value
 }
@@ -169,21 +169,21 @@ func main() {
 }
 ]=] 1 "Logical negation operand must be bool")
 
-run_rift_case(unknown_qualified_type_builtin [=[using std
+run_rift_case_contains(unknown_qualified_type_builtin [=[using std
 func main() {
     println("must not print")
     std.types.not_a_function(1)
 }
 ]=] 1 "Unknown std.types function: not_a_function")
 
-run_rift_case(unknown_types_builtin_via_std [=[using std
+run_rift_case_contains(unknown_types_builtin_via_std [=[using std
 func main() {
     println("must not print")
     types.not_a_function(1)
 }
 ]=] 1 "Unknown std.types function: not_a_function")
 
-run_rift_case(unknown_unqualified_builtin [=[using std
+run_rift_case_contains(unknown_unqualified_builtin [=[using std
 using std.types
 func main() {
     println("must not print")
@@ -191,7 +191,7 @@ func main() {
 }
 ]=] 1 "Undefined function: not_a_function")
 
-run_rift_case(type_builtin_wrong_argument_count [=[using std
+run_rift_case_contains(type_builtin_wrong_argument_count [=[using std
 using std.types
 func main() {
     println("must not print")
@@ -199,7 +199,7 @@ func main() {
 }
 ]=] 1 "std.types.size_of expects 1 argument(s)")
 
-run_rift_case(type_builtin_missing_argument [=[using std
+run_rift_case_contains(type_builtin_missing_argument [=[using std
 using std.types
 func main() {
     println("must not print")
@@ -207,7 +207,7 @@ func main() {
 }
 ]=] 1 "std.types.type_of expects 1 argument(s)")
 
-run_rift_case(type_builtin_incompatible_argument [=[using std
+run_rift_case_contains(type_builtin_incompatible_argument [=[using std
 using std.types
 func main() {
     println("must not print")
@@ -215,7 +215,7 @@ func main() {
 }
 ]=] 1 "std.types.to_int8 expects a numeric argument, got string")
 
-run_rift_case(type_builtin_unsupported_type [=[using std
+run_rift_case_contains(type_builtin_unsupported_type [=[using std
 using std.types
 func main() {
     println("must not print")
@@ -231,7 +231,7 @@ func main() {
     from_type_name: string = std.types.type_of(uint64)
     println("{}", from_type_name)
 }
-]=] 0 "int16 2 32767\nuint64")
+]=] 0 "int16 2 32767\nuint64\n")
 
 run_rift_case(decimal_minimum_boundary [=[using std
 using std.types
@@ -242,7 +242,7 @@ func main() {
     println(maximum)
     println(minimum < maximum)
 }
-]=] 0 "-170141183460469231731687303715884105728\n170141183460469231731687303715884105727\ntrue")
+]=] 0 "-170141183460469231731687303715884105728\n170141183460469231731687303715884105727\ntrue\n")
 
 run_rift_case(integer_edges_and_mixed_comparisons [=[using std
 using std.types
@@ -256,7 +256,7 @@ func main() {
     println(as_float, " ", as_double)
     println(signed_min < as_double)
 }
-]=] 0 "-128 127 255\n-128 255\ntrue")
+]=] 0 "-128 127 255\n-128 255\ntrue\n")
 
 run_rift_case(decimal_precision_and_truncation [=[using std
 using std.types
@@ -270,7 +270,7 @@ func main() {
     println(negative_quotient)
     println(truncated)
 }
-]=] 0 "0.123456789012345678\n0.666666666666666666\n-0.666666666666666666\n0")
+]=] 0 "0.123456789012345678\n0.666666666666666666\n-0.666666666666666666\n0\n")
 
 run_rift_case(explicit_float_conversions [=[using std
 using std.types
@@ -282,9 +282,9 @@ func main() {
     println(type_of(precise), " ", precise)
     println(decimal_value)
 }
-]=] 0 "float 1\ndouble 2.5\n0.1")
+]=] 0 "float 1\ndouble 2.5\n0.1\n")
 
-run_rift_case(void_builtin_argument_rejected [=[using std
+run_rift_case_contains(void_builtin_argument_rejected [=[using std
 using std.types
 func nothing() {
 }
@@ -294,7 +294,7 @@ func main() {
 }
 ]=] 1 "std.types.size_of cannot inspect a void value")
 
-run_rift_case(decimal_overflow_is_language_error [=[using std
+run_rift_case_contains(decimal_overflow_is_language_error [=[using std
 using std.types
 func main() {
     value: decimal = max_value(decimal)
@@ -302,7 +302,7 @@ func main() {
 }
 ]=] 1 "Decimal")
 
-run_rift_case(float_overflow_is_language_error [=[using std
+run_rift_case_contains(float_overflow_is_language_error [=[using std
 using std.types
 func main() {
     value: float = max_value(float)
@@ -310,7 +310,7 @@ func main() {
 }
 ]=] 1 "Floating-point overflow")
 
-run_rift_case(double_overflow_is_language_error [=[using std
+run_rift_case_contains(double_overflow_is_language_error [=[using std
 using std.types
 func main() {
     value: double = max_value(double)
@@ -318,7 +318,7 @@ func main() {
 }
 ]=] 1 "Floating-point overflow")
 
-run_rift_case(float_conversion_overflow [=[using std
+run_rift_case_contains(float_conversion_overflow [=[using std
 using std.types
 func main() {
     value: float = to_float(340282366920938463463374607431768211455)
@@ -331,4 +331,4 @@ func main() {
     value: decimal = 0.000000000000000001m / 2
     println(value)
 }
-]=] 0 "0")
+]=] 0 "500000000000000000\n")

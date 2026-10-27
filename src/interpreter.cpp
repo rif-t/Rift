@@ -206,7 +206,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 ScopePopGuard loopStateGuard{loopStates_};
                 bool completedNormally = false;
                 while (true) {
-                    if (statement.expression && !requireBoolean(evaluate(*statement.expression), "for-loop condition")) {
+                    if (statement.expression && !requireBoolean(evaluate(*statement.expression), isForLoop ? "for-loop condition" : "while condition")) {
                         completedNormally = true;
                         break;
                     }
@@ -224,25 +224,43 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                     ++state.iterations;
                     bool shouldBreak = false;
                     bool shouldRestart = false;
+                    const auto handleLoopSignal = [&](const LoopControlSignal& signal) {
+                        const std::string& currentName = loopStates_.back().name;
+                        if (!signal.target.empty() && signal.target != currentName) return false;
+                        if (signal.action == LoopAction::Break) shouldBreak = true;
+                        else if (signal.action == LoopAction::Restart) shouldRestart = true;
+                        return true;
+                    };
                     scopes_.emplace_back();
                     {
                         ScopePopGuard bodyScope{scopes_};
                         try {
                             executeStatements(statement.loopStatements);
                         } catch (const LoopControlSignal& signal) {
-                            const std::string& currentName = loopStates_.back().name;
-                            if (!signal.target.empty() && signal.target != currentName) throw;
-                            if (signal.action == LoopAction::Break) shouldBreak = true;
-                            else if (signal.action == LoopAction::Restart) shouldRestart = true;
+                            if (!handleLoopSignal(signal)) throw;
                         }
                     }
                     if (shouldBreak) { completedNormally = false; break; }
                     if (shouldRestart) {
                         loopStates_.back().iterations = 0;
+                        loopStates_.back().limit.reset();
                         runElse = false;
                         continue;
                     }
-                    if (isForLoop) executeStatements(statement.post);
+                    if (isForLoop) {
+                        try {
+                            executeStatements(statement.post);
+                        } catch (const LoopControlSignal& signal) {
+                            if (!handleLoopSignal(signal)) throw;
+                        }
+                        if (shouldBreak) { completedNormally = false; break; }
+                        if (shouldRestart) {
+                            loopStates_.back().iterations = 0;
+                            loopStates_.back().limit.reset();
+                            runElse = false;
+                            continue;
+                        }
+                    }
                 }
                 if (!completedNormally) runElse = false;
             }
