@@ -85,6 +85,13 @@ const Function* selectOverload(const std::string& name, const std::vector<const 
     if (tied) throw std::runtime_error("Ambiguous overload for function '" + name + "'");
     if (!best) {
         if (!matchingArity) throw std::runtime_error("No overload of function '" + name + "' accepts " + std::to_string(argumentTypes.size()) + " argument(s)");
+        if (candidates.size() == 1) {
+            const Function& candidate = *candidates.front();
+            for (std::size_t i = 0; i < argumentTypes.size(); ++i) {
+                if (!assignable(candidate.parameters[i].second, argumentTypes[i]))
+                    throw std::runtime_error("Argument " + std::to_string(i + 1) + " of function '" + name + "' must be " + candidate.parameters[i].second + ", got " + argumentTypes[i]);
+            }
+        }
         throw std::runtime_error("No matching overload for function '" + name + "'");
     }
     return best;

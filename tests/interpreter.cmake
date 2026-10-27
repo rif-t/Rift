@@ -75,7 +75,7 @@ func describe(value: int) -> string { return "integer" }
 func describe(value: string) -> string { return "text" }
 func describe(value: any) -> string { return "other" }
 func main() {
-    println(describe(42), " ", describe("rift"), " ", describe(true))
+    println("{} {} {}", describe(42), describe("rift"), describe(true))
 }
 ]=] 0 "integer text other")
 
