@@ -215,13 +215,6 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                         completedNormally = true;
                         break;
                     }
-                    if (state.skipsRemaining > 0) {
-                        --state.skipsRemaining;
-                        if (isForLoop) executeStatements(statement.post);
-                        continue;
-                    }
-                    if (state.iterations == std::numeric_limits<std::uint64_t>::max()) throw std::runtime_error("Loop iteration counter overflow");
-                    ++state.iterations;
                     bool shouldBreak = false;
                     bool shouldRestart = false;
                     const auto handleLoopSignal = [&](const LoopControlSignal& signal) {
@@ -231,6 +224,25 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                         else if (signal.action == LoopAction::Restart) shouldRestart = true;
                         return true;
                     };
+                    if (state.skipsRemaining > 0) {
+                        --state.skipsRemaining;
+                        if (isForLoop) {
+                            try {
+                                executeStatements(statement.post);
+                            } catch (const LoopControlSignal& signal) {
+                                if (!handleLoopSignal(signal)) throw;
+                            }
+                        }
+                        if (shouldBreak) { completedNormally = false; break; }
+                        if (shouldRestart) {
+                            loopStates_.back().iterations = 0;
+                            loopStates_.back().limit.reset();
+                            runElse = false;
+                        }
+                        continue;
+                    }
+                    if (state.iterations == std::numeric_limits<std::uint64_t>::max()) throw std::runtime_error("Loop iteration counter overflow");
+                    ++state.iterations;
                     scopes_.emplace_back();
                     {
                         ScopePopGuard bodyScope{scopes_};

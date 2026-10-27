@@ -96,6 +96,21 @@ func main() {
 }
 ]=] 0 "1\n1\n2\n3\n4\n")
 
+run_rift_case(for_restart_preserves_pending_skips [=[using std
+func main() {
+    index := 0
+    restarted := false
+    for index < 6; index++ {
+        if index == 0 && !restarted {
+            restarted = true
+            loop.skip(2)
+            loop.restart
+        }
+        println("{}:{}", index, loop.iteration)
+    }
+}
+]=] 0 "2:1\n3:2\n4:3\n5:4\n")
+
 run_rift_case(for_named_break_exits_outer_loop [=[using std
 func main() {
     count := 0
@@ -186,6 +201,29 @@ func main() {
     count := 0
     for i := 0; i < 5; loop.break {
         count++
+    } else {
+        println("must not execute")
+    }
+    println("{}", count)
+}
+]=] 0 "1\n")
+
+run_rift_case(for_post_continue_reaches_next_condition [=[using std
+func main() {
+    index := 0
+    for index < 3; loop.continue {
+        index++
+    } else {
+        println("finished {}", index)
+    }
+}
+]=] 0 "finished 3\n")
+
+run_rift_case(for_skipped_iteration_post_break_is_handled [=[using std
+func main() {
+    count := 0
+    for count < 10; if count == 1 { loop.break } else { count++ } {
+        if count == 0 { loop.skip(2) }
     } else {
         println("must not execute")
     }

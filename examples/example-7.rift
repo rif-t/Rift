@@ -1,0 +1,62 @@
+
+using std
+
+/*
+Looping with while
+Author: rif-t 27.10.2026 14:50 GMT+2:00
+
+*/
+
+func main(){
+    println("Simple while loop:\n")
+
+    i := 0
+    while i<=10{
+        print("i: {}, ", i)             // 0,1,2,...,10
+        i++
+    }
+
+    println("\n\nAnother loop:\n")
+
+    i = 100
+    our_loop : while i>=0{
+        if i==20{
+            println("The end of loop.")
+            break our_loop              // Breaking our_loop
+        }else{
+            println("i: {}", i)
+        }
+        i-=10
+    }
+
+    println("\nNamed loops feature 1: iteration\n")
+
+    another_loop : while another_loop.iteration<=10{
+        println("Iteration: {}", another_loop.iteration)
+    }
+
+    println("\nNamed loops feature 2: limit\n")
+
+    another_loop : while true{
+        another_loop.limit = 8          // Limits the number of iterations to 8
+        println("Iteration: {}", another_loop.iteration)
+    }
+
+    println("\nNamed loops feature 3: break_if\n")
+
+    another_loop : while true{
+        println("Iteration: {}", another_loop.iteration)
+
+        if another_loop.iteration==5{
+            another_loop.break_if(true)
+        }
+    }
+
+    println("\nNamed loops feature 4: else\n")
+
+    loop : while loop.iteration<8{
+        println("Iteration: {}", loop.iteration)
+    }else{
+        println("Ended without break")
+    }
+}

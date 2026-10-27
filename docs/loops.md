@@ -42,7 +42,8 @@ The following controls are available on `loop` or a named loop:
 - `.continue` skips the rest of the current body and runs the post statement.
 - `.restart` resumes at the next condition check without rerunning the
   initializer. It resets the iteration count and clears the current limit.
-  Restarting suppresses the loop's `else` block.
+  Pending skips remain queued across a restart. Restarting suppresses the
+  loop's `else` block.
 - `loop.skip(n)` skips the next `n` body executions. Each skipped iteration
   still checks the loop condition and runs the post statement. The count must
   be a non-negative integer no larger than `uint64`; zero has no effect.
