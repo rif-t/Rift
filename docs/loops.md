@@ -61,6 +61,29 @@ outer: for i := 0; i < 100; i++ {
 }
 ```
 
+## While loops
+
+`while` checks a boolean condition before each body execution. It can be named
+with the same label syntax as `for`:
+
+```rift
+count := 0
+while count < 5 {
+    count++
+}
+
+outer: while running {
+    if should_stop {
+        outer.break
+    }
+}
+```
+
+While loops support `.iteration`, `.limit`, `.break`, `.continue`, and
+`.break_if(condition)`, as well as `while ... else` normal-completion blocks.
+They do not support `.restart` or `.skip(n)` because they have no initializer
+or post statement to restart or skip.
+
 ## Loop `else`
 
 An optional `else` block runs when the loop ends because its condition becomes

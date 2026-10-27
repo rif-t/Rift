@@ -178,11 +178,13 @@ Statement Parser::parseStatement()
         return statement;
     }
     if (current().type == TokenType::For) return parseFor();
+    if (current().type == TokenType::While) return parseWhile();
     if (current().type == TokenType::Identifier && position_ + 2 < tokens_.size() &&
-        tokens_[position_ + 1].type == TokenType::Colon && tokens_[position_ + 2].type == TokenType::For) {
+        tokens_[position_ + 1].type == TokenType::Colon &&
+        (tokens_[position_ + 2].type == TokenType::For || tokens_[position_ + 2].type == TokenType::While)) {
         const std::string loopName = consume().text;
         consume();
-        return parseFor(loopName);
+        return current().type == TokenType::For ? parseFor(loopName) : parseWhile(loopName);
     }
     if (current().type == TokenType::Return) {
         consume();
@@ -334,6 +336,24 @@ Statement Parser::parseFor(std::string loopName)
         }
     }
 
+    if (parenthesized) expect(TokenType::RightParen);
+    loop.loopStatements = parseBlock();
+    if (current().type == TokenType::Identifier && current().text == "else") {
+        consume();
+        loop.loopElseStatements = parseBlock();
+    }
+    return loop;
+}
+
+Statement Parser::parseWhile(std::string loopName)
+{
+    expect(TokenType::While);
+    const bool parenthesized = current().type == TokenType::LeftParen;
+    if (parenthesized) consume();
+    Statement loop;
+    loop.type = Statement::Type::While;
+    loop.loopName = std::move(loopName);
+    loop.expression = parseExpression();
     if (parenthesized) expect(TokenType::RightParen);
     loop.loopStatements = parseBlock();
     if (current().type == TokenType::Identifier && current().text == "else") {

@@ -64,6 +64,7 @@ std::vector<Token> Lexer::tokenize()
                 emit(TokenType::Return, text);
             }
             else if (text == "for") emit(TokenType::For, text);
+            else if (text == "while") emit(TokenType::While, text);
             else if (text == "break") emit(TokenType::Break, text);
             else if (text == "namespace") {
                 emit(TokenType::NamespaceKeyword, text);

@@ -69,6 +69,7 @@ struct Statement
         Print,
         If,
         For,
+        While,
         Break,
         Return,
         ExpressionStatement

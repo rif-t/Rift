@@ -14,6 +14,7 @@ enum class TokenType
     Using,
     Return,
     For,
+    While,
     Break,
     NamespaceKeyword,
     Const,

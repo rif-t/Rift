@@ -209,7 +209,8 @@ std::unique_ptr<Expression> Parser::parsePrimary()
         consume();
         while (current().type == TokenType::Dot) {
             consume();
-            if (current().type != TokenType::Identifier) throw std::runtime_error("Expected name after '.'");
+            if (current().type != TokenType::Identifier && current().type != TokenType::Break)
+                throw std::runtime_error("Expected name after '.'");
             expression->name += "." + consume().text;
         }
         if (current().type == TokenType::LeftParen) {

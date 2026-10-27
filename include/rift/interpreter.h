@@ -26,6 +26,7 @@ private:
         std::uint64_t iterations = 0;
         std::optional<std::uint64_t> limit;
         std::uint64_t skipsRemaining = 0;
+        bool supportsRestartSkip = true;
     };
     using Scope = std::unordered_map<std::string, Variable>;
     std::vector<Scope> scopes_;

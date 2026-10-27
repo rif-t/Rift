@@ -60,6 +60,7 @@ add_rift_test(lexer)
 add_rift_test(parser)
 add_rift_test(integer)
 add_rift_test(interpreter)
+add_rift_test(loops)
 add_rift_test(type_system)
 add_rift_test(integration)
 

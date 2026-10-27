@@ -131,3 +131,39 @@ run_rift_case(break_outside_loop [=[func main() {
     break
 }
 ]=] 1 "break can only be used inside a loop")
+
+run_rift_case(while_loop_with_limit_and_else [=[using std
+func main() {
+    value := 0
+    named: while value < 10 {
+        if named.iteration == 2 { named.limit = 3 }
+        value++
+    } else {
+        println("normal {}", value)
+    }
+}
+]=] 0 "normal 3")
+
+run_rift_case(while_loop_continue_and_break_if [=[using std
+func main() {
+    value := 0
+    while value < 5 {
+        value++
+        if value == 2 { loop.continue }
+        loop.break_if(value == 4)
+    } else {
+        println("should not run")
+    }
+    println("value {}", value)
+}
+]=] 0 "value 4")
+
+run_rift_case(while_loop_rejects_restart [=[func main() {
+    while true { loop.restart }
+}
+]=] 1 "restart is only available for for loops")
+
+run_rift_case(while_loop_rejects_skip [=[func main() {
+    while true { loop.skip(1) }
+}
+]=] 1 "skip is only available for for loops")

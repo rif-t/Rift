@@ -192,13 +192,17 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 ScopePopGuard guard{scopes_};
                 executeStatements(statement.elseStatements);
             }
-        } else if (statement.type == Statement::Type::For) {
+        } else if (statement.type == Statement::Type::For || statement.type == Statement::Type::While) {
+            const bool isForLoop = statement.type == Statement::Type::For;
             scopes_.emplace_back();
             ScopePopGuard loopScope{scopes_};
-            executeStatements(statement.initializer);
+            if (isForLoop) executeStatements(statement.initializer);
             bool runElse = true;
             {
-                loopStates_.push_back({statement.loopName});
+                LoopState initialState;
+                initialState.name = statement.loopName;
+                initialState.supportsRestartSkip = isForLoop;
+                loopStates_.push_back(std::move(initialState));
                 ScopePopGuard loopStateGuard{loopStates_};
                 bool completedNormally = false;
                 while (true) {
@@ -213,7 +217,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                     }
                     if (state.skipsRemaining > 0) {
                         --state.skipsRemaining;
-                        executeStatements(statement.post);
+                        if (isForLoop) executeStatements(statement.post);
                         continue;
                     }
                     if (state.iterations == std::numeric_limits<std::uint64_t>::max()) throw std::runtime_error("Loop iteration counter overflow");
@@ -238,7 +242,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                         runElse = false;
                         continue;
                     }
-                    executeStatements(statement.post);
+                    if (isForLoop) executeStatements(statement.post);
                 }
                 if (!completedNormally) runElse = false;
             }

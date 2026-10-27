@@ -149,7 +149,10 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
             const std::string signalTarget = target == "loop" ? "" : target;
             if (member == "break") throw LoopControlSignal{signalTarget, LoopAction::Break};
             if (member == "continue") throw LoopControlSignal{signalTarget, LoopAction::Continue};
-            if (member == "restart") throw LoopControlSignal{signalTarget, LoopAction::Restart};
+            if (member == "restart") {
+                if (!state->supportsRestartSkip) throw std::runtime_error("restart is only available for for loops");
+                throw LoopControlSignal{signalTarget, LoopAction::Restart};
+            }
         }
         for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
             auto it = scope->find(expression.name);
@@ -221,6 +224,7 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
                 if (state == loopStates_.rend()) throw std::runtime_error("No active loop named '" + target + "'");
             }
             if (isSkip) {
+                if (!state->supportsRestartSkip) throw std::runtime_error("skip is only available for for loops");
                 const std::uint64_t count = loopCount(argument, "loop.skip count");
                 if (count > std::numeric_limits<std::uint64_t>::max() - state->skipsRemaining) throw std::runtime_error("loop.skip count overflow");
                 state->skipsRemaining += count;
