@@ -1,6 +1,7 @@
 #include "semantic_analysis.h"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -8,7 +9,14 @@
 namespace {
 struct TypeInfo { std::string type; bool isConst = false; };
 using Types = std::vector<std::unordered_map<std::string, TypeInfo>>;
-using Functions = std::unordered_map<std::string, const Function*>;
+using Functions = std::unordered_map<std::string, std::vector<const Function*>>;
+
+std::string canonicalType(std::string type)
+{
+    if (type == "int32") return "int";
+    if (type == "uint") return "uint32";
+    return type;
+}
 
 bool numeric(const std::string& t) { return t == "any" || t == "int" || t == "float" || t == "double" || t == "decimal" || t.starts_with("int") || t.starts_with("uint"); }
 bool assignable(const std::string& target, const std::string& source)
@@ -31,21 +39,55 @@ std::string promotedNumericType(const std::string& left, const std::string& righ
     return std::string(unsignedResult ? "uint" : "int") + std::to_string(std::max(leftBits, rightBits));
 }
 
-const Function* resolve(const std::string& name, const Functions& functions, const Program& program)
+std::vector<const Function*> resolve(const std::string& name, const Functions& functions, const Program& program)
 {
     if (auto it = functions.find(name); it != functions.end()) return it->second;
     if (name.find('.') == std::string::npos) {
-        const Function* result = nullptr;
+        std::vector<const Function*> result;
         for (const auto& ns : program.usingNamespaces) {
             if (ns == "std") continue;
             if (auto it = functions.find(ns + "." + name); it != functions.end()) {
-                if (result) throw std::runtime_error("Ambiguous function '" + name + "'; qualify it with its namespace");
+                if (!result.empty()) throw std::runtime_error("Ambiguous function '" + name + "'; qualify it with its namespace");
                 result = it->second;
             }
         }
         return result;
     }
-    return nullptr;
+    return {};
+}
+
+const Function* selectOverload(const std::string& name, const std::vector<const Function*>& candidates,
+    const std::vector<std::string>& argumentTypes)
+{
+    int bestScore = std::numeric_limits<int>::max();
+    const Function* best = nullptr;
+    bool tied = false;
+    bool matchingArity = false;
+    for (const Function* candidate : candidates) {
+        if (candidate->parameters.size() != argumentTypes.size()) continue;
+        matchingArity = true;
+        int score = 0;
+        bool matches = true;
+        for (std::size_t i = 0; i < argumentTypes.size(); ++i) {
+            const auto target = canonicalType(candidate->parameters[i].second);
+            const auto source = canonicalType(argumentTypes[i]);
+            if (target == source) continue;
+            if (target == "any") { score += 2; continue; }
+            if (source == "any") { score += 1; continue; }
+            if (numeric(target) && numeric(source)) { score += 1; continue; }
+            matches = false;
+            break;
+        }
+        if (!matches) continue;
+        if (score < bestScore) { bestScore = score; best = candidate; tied = false; }
+        else if (score == bestScore) tied = true;
+    }
+    if (tied) throw std::runtime_error("Ambiguous overload for function '" + name + "'");
+    if (!best) {
+        if (!matchingArity) throw std::runtime_error("No overload of function '" + name + "' accepts " + std::to_string(argumentTypes.size()) + " argument(s)");
+        throw std::runtime_error("No matching overload for function '" + name + "'");
+    }
+    return best;
 }
 
 std::string expressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program);
@@ -191,12 +233,10 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
                 return e.arguments[0]->name == "char" || e.arguments[0]->name == "string" ? "int" : e.arguments[0]->name;
             return result;
         }
-        const Function* f = resolve(e.name, functions, program);
-        if (!f) throw std::runtime_error("Undefined function: " + e.name);
-        if (e.arguments.size() != f->parameters.size()) throw std::runtime_error("Function '" + e.name + "' expects " + std::to_string(f->parameters.size()) + " argument(s)");
-        for (std::size_t i = 0; i < argumentTypes.size(); ++i)
-            if (!assignable(f->parameters[i].second, argumentTypes[i]))
-                throw std::runtime_error("Argument " + std::to_string(i + 1) + " of function '" + e.name + "' must be " + f->parameters[i].second + ", got " + argumentTypes[i]);
+        const auto candidates = resolve(e.name, functions, program);
+        if (candidates.empty()) throw std::runtime_error("Undefined function: " + e.name);
+        const Function* f = selectOverload(e.name, candidates, argumentTypes);
+        e.resolvedFunction = f;
         return f->returnType.empty() ? "void" : f->returnType;
     }
     }
@@ -281,10 +321,19 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
 void validateProgram(const Program& program)
 {
     Functions functions;
-    for (const auto& function : program.functions)
-        if (!functions.emplace(function.name, &function).second) throw std::runtime_error("Duplicate function: " + function.name);
+    std::unordered_map<std::string, std::unordered_set<std::string>> signatures;
+    for (const auto& function : program.functions) {
+        std::string signature;
+        for (const auto& parameter : function.parameters) signature += canonicalType(parameter.second) + ";";
+        if (!signatures[function.name].insert(signature).second)
+            throw std::runtime_error("Duplicate function overload: " + function.name);
+        functions[function.name].push_back(&function);
+    }
     const Function* mainFunction = nullptr;
-    for (const auto& f : program.functions) if (f.name == "main") mainFunction = &f;
+    if (auto it = functions.find("main"); it != functions.end()) {
+        if (it->second.size() != 1) throw std::runtime_error("Function 'main' cannot be overloaded");
+        mainFunction = it->second.front();
+    }
     if (!mainFunction) throw std::runtime_error("No main function");
     if (!mainFunction->parameters.empty()) throw std::runtime_error("Function 'main' must not have parameters");
     for (const auto& f : program.functions) {

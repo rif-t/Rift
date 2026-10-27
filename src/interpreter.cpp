@@ -35,16 +35,14 @@ void Interpreter::run(const Program& program)
     validateProgram(program);
     functions_.clear();
     usingNamespaces_ = program.usingNamespaces;
-    for (const auto& function : program.functions) {
-        if (!functions_.emplace(function.name, &function).second) throw std::runtime_error("Duplicate function: " + function.name);
-    }
+    for (const auto& function : program.functions) functions_[function.name].push_back(&function);
     callFunction("main", {});
 }
 
-RuntimeValue Interpreter::callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments)
+RuntimeValue Interpreter::callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments, const Function* selected)
 {
     auto found = functions_.find(name);
-    if (found == functions_.end() && name.find('.') == std::string::npos) {
+    if (!selected && found == functions_.end() && name.find('.') == std::string::npos) {
         for (const auto& namespaceName : usingNamespaces_) {
             if (namespaceName == "std") continue;
             auto candidate = functions_.find(namespaceName + "." + name);
@@ -53,8 +51,8 @@ RuntimeValue Interpreter::callFunction(const std::string& name, const std::vecto
             found = candidate;
         }
     }
-    if (found == functions_.end()) throw std::runtime_error("Undefined function: " + name);
-    const Function& function = *found->second;
+    if (!selected && found == functions_.end()) throw std::runtime_error("Undefined function: " + name);
+    const Function& function = selected ? *selected : *found->second.front();
     if (arguments.size() != function.parameters.size()) {
         throw std::runtime_error("Function '" + name + "' expects " + std::to_string(function.parameters.size()) + " argument(s)");
     }

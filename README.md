@@ -59,6 +59,10 @@ if (passed) {
 
 Functions can take typed parameters and return a typed value. Calls can be used
 inside expressions and formatting arguments.
+Functions may be overloaded by parameter types. Rift selects an exact match
+before considering numeric conversions or an `any` parameter. If multiple
+overloads are equally good matches, semantic analysis reports an ambiguity;
+the return type and parameter names do not distinguish overloads.
 
 ```rift
 using std
@@ -70,6 +74,11 @@ func is_passing(score: int) -> bool {
 func main() {
     println(is_passing(72) ? "pass" : "retry")
 }
+```
+
+```rift
+func label(value: int) -> string { return "integer" }
+func label(value: string) -> string { return "text" }
 ```
 
 ## Namespaces

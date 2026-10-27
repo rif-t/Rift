@@ -230,7 +230,7 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
         std::vector<RuntimeValue> arguments;
         arguments.reserve(expression.arguments.size());
         for (const auto& argument : expression.arguments) arguments.push_back(evaluate(*argument));
-        return callFunction(expression.name, arguments);
+        return callFunction(expression.name, arguments, expression.resolvedFunction);
     }
     }
     throw std::runtime_error("Unknown expression");

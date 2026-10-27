@@ -11,6 +11,8 @@
 
 using RuntimeValue = std::variant<WideInteger, float, double, Decimal, bool, std::string, std::u16string, char16_t, std::monostate>;
 
+struct Function;
+
 struct Expression
 {
     enum class Type
@@ -29,6 +31,7 @@ struct Expression
 
     Type type;
     mutable std::string resolvedType;
+    mutable const Function* resolvedFunction = nullptr;
 
     RuntimeValue value = WideInteger{};
     std::string name;

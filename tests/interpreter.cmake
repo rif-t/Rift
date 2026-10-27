@@ -69,3 +69,26 @@ func main() {
     println(text)
 }
 ]=] 0 "Rift! language")
+
+run_rift_case(function_overloads_exact_and_fallback [=[using std
+func describe(value: int) -> string { return "integer" }
+func describe(value: string) -> string { return "text" }
+func describe(value: any) -> string { return "other" }
+func main() {
+    println(describe(42), " ", describe("rift"), " ", describe(true))
+}
+]=] 0 "integer text other")
+
+run_rift_case(function_overload_ambiguous_conversion [=[using std
+func choose(value: int64) -> string { return "wide integer" }
+func choose(value: double) -> string { return "floating point" }
+func main() {
+    println("must not execute")
+    println(choose(42))
+}
+]=] 1 "Ambiguous overload for function 'choose'")
+
+run_rift_case(function_overload_duplicate_signature [=[func same(first: int) -> int { return first }
+func same(second: int32) -> int { return second }
+func main() {}
+]=] 1 "Duplicate function overload: same")

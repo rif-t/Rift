@@ -14,13 +14,13 @@ public:
 
 private:
     void executeStatements(const std::vector<Statement>& statements);
-    RuntimeValue callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments);
+    RuntimeValue callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments, const Function* selected = nullptr);
 
     RuntimeValue evaluate(const Expression& expression);
 
     struct Variable { RuntimeValue value; std::string type; bool isConst = false; };
     using Scope = std::unordered_map<std::string, Variable>;
     std::vector<Scope> scopes_;
-    std::unordered_map<std::string, const Function*> functions_;
+    std::unordered_map<std::string, std::vector<const Function*>> functions_;
     std::vector<std::string> usingNamespaces_;
 };
