@@ -2,6 +2,7 @@
 #include "interpreter_internal.h"
 #include "semantic_analysis.h"
 
+#include <limits>
 #include <stdexcept>
 
 using namespace rift::runtime;
@@ -29,9 +30,13 @@ struct ScopePopGuard {
     ~ScopePopGuard() { scopes.pop_back(); }
 };
 
-struct BreakSignal {
-    std::string target;
-};
+std::uint64_t loopCount(const RuntimeValue& value, const std::string& purpose)
+{
+    const auto* integer = std::get_if<WideInteger>(&value);
+    if (!integer || integer->negative || integer->magnitude.high != 0)
+        throw std::runtime_error(purpose + " must be a non-negative integer no larger than uint64");
+    return integer->magnitude.low;
+}
 }
 
 void Interpreter::run(const Program& program)
@@ -114,6 +119,19 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 scopes_.back()[name] = {std::move(value), std::move(type), declaration.isConst};
             }
         } else if (statement.type == Statement::Type::Assignment) {
+            if (statement.name.ends_with(".limit")) {
+                const std::string target = statement.name.substr(0, statement.name.size() - 6);
+                const std::uint64_t value = loopCount(evaluate(*statement.expression), "Loop limit");
+                auto state = loopStates_.rbegin();
+                if (target == "loop") {
+                    if (state == loopStates_.rend()) throw std::runtime_error("No active loop for 'loop.limit'");
+                } else {
+                    while (state != loopStates_.rend() && state->name != target) ++state;
+                    if (state == loopStates_.rend()) throw std::runtime_error("No active loop named '" + target + "'");
+                }
+                state->limit = value;
+                continue;
+            }
             auto scope = scopes_.rbegin();
             while (scope != scopes_.rend() && !scope->contains(statement.name)) ++scope;
             if (scope == scopes_.rend()) throw std::runtime_error("Cannot assign to undefined variable: " + statement.name);
@@ -178,23 +196,59 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
             scopes_.emplace_back();
             ScopePopGuard loopScope{scopes_};
             executeStatements(statement.initializer);
-            while (!statement.expression || requireBoolean(evaluate(*statement.expression), "for-loop condition")) {
-                bool shouldBreak = false;
-                scopes_.emplace_back();
-                {
-                    ScopePopGuard bodyScope{scopes_};
-                    try {
-                        executeStatements(statement.loopStatements);
-                    } catch (const BreakSignal& signal) {
-                        if (signal.target.empty() || signal.target == statement.loopName) shouldBreak = true;
-                        else throw;
+            bool runElse = true;
+            {
+                loopStates_.push_back({statement.loopName});
+                ScopePopGuard loopStateGuard{loopStates_};
+                bool completedNormally = false;
+                while (true) {
+                    if (statement.expression && !requireBoolean(evaluate(*statement.expression), "for-loop condition")) {
+                        completedNormally = true;
+                        break;
                     }
+                    auto& state = loopStates_.back();
+                    if (state.limit && state.iterations >= *state.limit) {
+                        completedNormally = true;
+                        break;
+                    }
+                    if (state.skipsRemaining > 0) {
+                        --state.skipsRemaining;
+                        executeStatements(statement.post);
+                        continue;
+                    }
+                    if (state.iterations == std::numeric_limits<std::uint64_t>::max()) throw std::runtime_error("Loop iteration counter overflow");
+                    ++state.iterations;
+                    bool shouldBreak = false;
+                    bool shouldRestart = false;
+                    scopes_.emplace_back();
+                    {
+                        ScopePopGuard bodyScope{scopes_};
+                        try {
+                            executeStatements(statement.loopStatements);
+                        } catch (const LoopControlSignal& signal) {
+                            const std::string& currentName = loopStates_.back().name;
+                            if (signal.target != "loop" && signal.target != currentName) throw;
+                            if (signal.action == LoopAction::Break) shouldBreak = true;
+                            else if (signal.action == LoopAction::Restart) shouldRestart = true;
+                        }
+                    }
+                    if (shouldBreak) { completedNormally = false; break; }
+                    if (shouldRestart) {
+                        loopStates_.back().iterations = 0;
+                        runElse = false;
+                        continue;
+                    }
+                    executeStatements(statement.post);
                 }
-                if (shouldBreak) break;
-                executeStatements(statement.post);
+                if (!completedNormally) runElse = false;
+            }
+            if (runElse) {
+                scopes_.emplace_back();
+                ScopePopGuard elseScope{scopes_};
+                executeStatements(statement.loopElseStatements);
             }
         } else if (statement.type == Statement::Type::Break) {
-            throw BreakSignal{statement.name};
+            throw LoopControlSignal{statement.name.empty() ? "loop" : statement.name, LoopAction::Break};
         } else if (statement.type == Statement::Type::Return) {
             ReturnSignal signal;
             if (statement.expression) signal.value = evaluate(*statement.expression);

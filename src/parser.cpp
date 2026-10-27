@@ -212,6 +212,19 @@ Statement Parser::parseStatement()
     }
     if (current().text == "if") return parseIf();
 
+    if (current().type == TokenType::Identifier && peek().type == TokenType::Dot &&
+        position_ + 3 < tokens_.size() && tokens_[position_ + 2].type == TokenType::Identifier &&
+        tokens_[position_ + 2].text == "limit" && tokens_[position_ + 3].type == TokenType::Equal) {
+        Statement statement;
+        statement.type = Statement::Type::Assignment;
+        statement.name = consume().text;
+        consume();
+        statement.name += "." + consume().text;
+        consume();
+        statement.expression = parseExpression();
+        return statement;
+    }
+
     if (peek().type == TokenType::LeftParen || peek().type == TokenType::Dot) {
         Statement statement;
         statement.type = Statement::Type::ExpressionStatement;
@@ -323,6 +336,10 @@ Statement Parser::parseFor(std::string loopName)
 
     if (parenthesized) expect(TokenType::RightParen);
     loop.loopStatements = parseBlock();
+    if (current().type == TokenType::Identifier && current().text == "else") {
+        consume();
+        loop.loopElseStatements = parseBlock();
+    }
     return loop;
 }
 

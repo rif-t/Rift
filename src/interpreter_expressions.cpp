@@ -46,6 +46,14 @@ std::string valueType(const RuntimeValue& value)
     return "void";
 }
 
+std::uint64_t loopCount(const RuntimeValue& value, const std::string& purpose)
+{
+    const auto* integer = std::get_if<WideInteger>(&value);
+    if (!integer || integer->negative || integer->magnitude.high != 0)
+        throw std::runtime_error(purpose + " must be a non-negative integer no larger than uint64");
+    return integer->magnitude.low;
+}
+
 std::size_t typeSize(const std::string& type)
 {
     if (type == "bool" || type == "int8" || type == "uint8") return 1;
@@ -122,6 +130,26 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
     case Expression::Type::TypeName:
         return expression.name;
     case Expression::Type::Identifier: {
+        const auto dot = expression.name.rfind('.');
+        if (dot != std::string::npos) {
+            const std::string target = expression.name.substr(0, dot);
+            const std::string member = expression.name.substr(dot + 1);
+            auto state = loopStates_.rbegin();
+            if (target == "loop") {
+                if (state == loopStates_.rend()) throw std::runtime_error("No active loop for 'loop." + member + "'");
+            } else if (member == "iteration" || member == "limit" || member == "break" || member == "continue" || member == "restart") {
+                while (state != loopStates_.rend() && state->name != target) ++state;
+                if (state == loopStates_.rend()) throw std::runtime_error("No active loop named '" + target + "'");
+            }
+            if (member == "iteration") return WideInteger{UInt128{0, state->iterations}, false, true, 64};
+            if (member == "limit") {
+                if (!state->limit) throw std::runtime_error("Loop has no iteration limit");
+                return WideInteger{UInt128{0, *state->limit}, false, true, 64};
+            }
+            if (member == "break") throw LoopControlSignal{target, LoopAction::Break};
+            if (member == "continue") throw LoopControlSignal{target, LoopAction::Continue};
+            if (member == "restart") throw LoopControlSignal{target, LoopAction::Restart};
+        }
         for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
             auto it = scope->find(expression.name);
             if (it != scope->end()) {
@@ -179,6 +207,27 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
         return result;
     }
     case Expression::Type::Call: {
+        if (expression.name.ends_with(".skip") || expression.name.ends_with(".break_if")) {
+            const bool isSkip = expression.name.ends_with(".skip");
+            const std::string target = expression.name.substr(0, expression.name.rfind('.'));
+            if (expression.arguments.size() != 1) throw std::runtime_error("Loop control expects exactly one argument");
+            RuntimeValue argument = evaluate(*expression.arguments.front());
+            auto state = loopStates_.rbegin();
+            if (target == "loop") {
+                if (state == loopStates_.rend()) throw std::runtime_error("No active loop for 'loop' control");
+            } else {
+                while (state != loopStates_.rend() && state->name != target) ++state;
+                if (state == loopStates_.rend()) throw std::runtime_error("No active loop named '" + target + "'");
+            }
+            if (isSkip) {
+                const std::uint64_t count = loopCount(argument, "loop.skip count");
+                if (count > std::numeric_limits<std::uint64_t>::max() - state->skipsRemaining) throw std::runtime_error("loop.skip count overflow");
+                state->skipsRemaining += count;
+                return std::monostate{};
+            }
+            if (requireBoolean(argument, "loop.break_if argument")) throw LoopControlSignal{target, LoopAction::Break};
+            return std::monostate{};
+        }
         std::string builtinName;
         const std::string explicitPrefix = "std.types.";
             if (expression.name.starts_with(explicitPrefix)) {

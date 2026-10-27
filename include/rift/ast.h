@@ -88,6 +88,7 @@ struct Statement
     std::vector<Statement> initializer;
     std::vector<Statement> post;
     std::vector<Statement> loopStatements;
+    std::vector<Statement> loopElseStatements;
 };
 
 struct Function

@@ -11,6 +11,12 @@ struct ReturnSignal {
     std::optional<RuntimeValue> value;
 };
 
+enum class LoopAction { Break, Continue, Restart };
+struct LoopControlSignal {
+    std::string target;
+    LoopAction action;
+};
+
 WideInteger applyArithmetic(const std::string& operation, WideInteger left, WideInteger right);
 RuntimeValue applyNumericArithmetic(const std::string& operation, const RuntimeValue& left, const RuntimeValue& right);
 WideInteger negate(WideInteger value);

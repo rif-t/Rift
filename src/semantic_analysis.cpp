@@ -26,6 +26,21 @@ bool assignable(const std::string& target, const std::string& source)
     return false;
 }
 
+bool integerType(const std::string& type)
+{
+    return type == "int" || type.starts_with("int") || type.starts_with("uint");
+}
+
+void requireLoopTarget(const std::string& target, const std::vector<std::string>& loopStack)
+{
+    if (target == "loop") {
+        if (loopStack.empty()) throw std::runtime_error("Loop control can only be used inside a loop");
+        return;
+    }
+    if (std::find(loopStack.begin(), loopStack.end(), target) == loopStack.end())
+        throw std::runtime_error("Unknown active loop: " + target);
+}
+
 std::string promotedNumericType(const std::string& left, const std::string& right, const std::string& operation = "")
 {
     if (left == "any" || right == "any") return "any";
@@ -97,7 +112,7 @@ const Function* selectOverload(const std::string& name, const std::vector<const 
     return best;
 }
 
-std::string expressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program);
+std::string expressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program, const std::vector<std::string>& loopStack);
 
 std::string resolveTypeBuiltin(const std::string& name, const Program& program)
 {
@@ -168,7 +183,7 @@ std::string validateTypeBuiltin(const std::string& name, const std::vector<std::
     throw std::runtime_error("Unknown std.types function: " + name);
 }
 
-std::string inferExpressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program)
+std::string inferExpressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program, const std::vector<std::string>& loopStack)
 {
     switch (e.type) {
     case Expression::Type::Number:
@@ -180,11 +195,23 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
     case Expression::Type::Boolean: return "bool";
     case Expression::Type::TypeName: return "type";
     case Expression::Type::Identifier:
+        if (const auto dot = e.name.rfind('.'); dot != std::string::npos) {
+            const std::string target = e.name.substr(0, dot);
+            const std::string member = e.name.substr(dot + 1);
+            if (member == "iteration" || member == "limit") {
+                requireLoopTarget(target, loopStack);
+                return "uint64";
+            }
+            if (member == "break" || member == "continue" || member == "restart") {
+                requireLoopTarget(target, loopStack);
+                return "void";
+            }
+        }
         for (auto s = scopes.rbegin(); s != scopes.rend(); ++s)
             if (auto it = s->find(e.name); it != s->end()) return it->second.type;
         throw std::runtime_error("Undefined variable: " + e.name);
     case Expression::Type::Unary: {
-        const auto type = expressionType(*e.left, scopes, functions, program);
+        const auto type = expressionType(*e.left, scopes, functions, program, loopStack);
         if (e.operation == "!") { if (type != "bool" && type != "any") throw std::runtime_error("Logical negation requires bool"); return "bool"; }
         if (e.operation == "-" && type.starts_with("uint")) throw std::runtime_error("Unsigned integer values cannot be negated");
         if (type != "int" && type != "float" && type != "double" && type != "decimal" && !type.starts_with("uint") && !type.starts_with("int"))
@@ -192,8 +219,8 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
         return type;
     }
     case Expression::Type::Binary: {
-        auto l = expressionType(*e.left, scopes, functions, program);
-        auto r = expressionType(*e.right, scopes, functions, program);
+        auto l = expressionType(*e.left, scopes, functions, program, loopStack);
+        auto r = expressionType(*e.right, scopes, functions, program, loopStack);
         if (e.operation == "&&" || e.operation == "||") {
             if ((l != "bool" && l != "any") || (r != "bool" && r != "any")) throw std::runtime_error("Logical operators require bool operands");
             return "bool";
@@ -215,17 +242,26 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
         return promotedNumericType(l, r, e.operation);
     }
     case Expression::Type::Conditional: {
-        const auto conditionType = expressionType(*e.left, scopes, functions, program);
+        const auto conditionType = expressionType(*e.left, scopes, functions, program, loopStack);
         if (conditionType != "bool" && conditionType != "any") throw std::runtime_error("Conditional expression condition must be bool");
-        auto a = expressionType(*e.right, scopes, functions, program);
-        auto b = expressionType(*e.third, scopes, functions, program);
+        auto a = expressionType(*e.right, scopes, functions, program, loopStack);
+        auto b = expressionType(*e.third, scopes, functions, program, loopStack);
         if (a == b) return a;
         if (numeric(a) && numeric(b)) return promotedNumericType(a, b);
         throw std::runtime_error("Conditional branches must have compatible types");
     }
     case Expression::Type::Call: {
         std::vector<std::string> argumentTypes;
-        for (const auto& arg : e.arguments) argumentTypes.push_back(expressionType(*arg, scopes, functions, program));
+        for (const auto& arg : e.arguments) argumentTypes.push_back(expressionType(*arg, scopes, functions, program, loopStack));
+        if (e.name.ends_with(".skip") || e.name.ends_with(".break_if")) {
+            const bool isSkip = e.name.ends_with(".skip");
+            const std::string target = e.name.substr(0, e.name.rfind('.'));
+            requireLoopTarget(target, loopStack);
+            if (argumentTypes.size() != 1) throw std::runtime_error("Loop control expects exactly one argument");
+            if (isSkip && !integerType(argumentTypes[0])) throw std::runtime_error("loop.skip expects a non-negative integer count");
+            if (!isSkip && argumentTypes[0] != "bool" && argumentTypes[0] != "any") throw std::runtime_error("loop.break_if expects bool");
+            return "void";
+        }
         const std::string builtin = resolveTypeBuiltin(e.name, program);
         if (!builtin.empty()) {
             if (builtin == "size_of" || builtin == "sizeof" || builtin == "max_value" || builtin == "min_value") {
@@ -250,9 +286,9 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
     return "any";
 }
 
-std::string expressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program)
+std::string expressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program, const std::vector<std::string>& loopStack)
 {
-    e.resolvedType = inferExpressionType(e, scopes, functions, program);
+    e.resolvedType = inferExpressionType(e, scopes, functions, program, loopStack);
     return e.resolvedType;
 }
 
@@ -279,7 +315,7 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
                 if (scopes.back().contains(name)) throw std::runtime_error("Variable already declared in this scope: " + name);
                 std::string type = d.type;
                 if (!d.values.empty()) {
-                    const auto valueType = expressionType(*d.values[i], scopes, functions, program);
+                    const auto valueType = expressionType(*d.values[i], scopes, functions, program, loopStack);
                     if (type == "auto") type = valueType;
                     else if (type != "const" && !assignable(type, valueType))
                         throw std::runtime_error("Cannot initialize '" + name + "' of type " + type + " with " + valueType);
@@ -287,6 +323,13 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
                 scopes.back()[name] = {type, d.isConst};
             }
         } else if (s.type == Statement::Type::Assignment) {
+            if (s.name.ends_with(".limit")) {
+                const std::string targetName = s.name.substr(0, s.name.size() - 6);
+                requireLoopTarget(targetName, loopStack);
+                const auto source = expressionType(*s.expression, scopes, functions, program, loopStack);
+                if (!integerType(source) && source != "any") throw std::runtime_error("Loop limit must be an integer");
+                continue;
+            }
             std::string target;
             bool found = false;
             bool isConst = false;
@@ -294,7 +337,7 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
             if (!found) throw std::runtime_error("Cannot assign to undefined variable: " + s.name);
             if (isConst) throw std::runtime_error("Cannot assign to const variable: " + s.name);
             if (s.expression) {
-                const auto source = expressionType(*s.expression, scopes, functions, program);
+                const auto source = expressionType(*s.expression, scopes, functions, program, loopStack);
                 if (s.operation == "=" && !assignable(target, source)) throw std::runtime_error("Cannot assign " + source + " to " + target);
                 const bool stringConcatenation = s.operation == "+" && target == "string" && (source == "string" || source == "char");
                 if (s.operation != "=" && !stringConcatenation && (!numeric(target) || !numeric(source)))
@@ -303,19 +346,19 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
                 throw std::runtime_error("Increment and decrement require a numeric variable");
             }
         } else if (s.type == Statement::Type::Print) {
-            for (const auto& a : s.arguments) expressionType(*a, scopes, functions, program);
-        } else if (s.type == Statement::Type::ExpressionStatement) expressionType(*s.expression, scopes, functions, program);
+            for (const auto& a : s.arguments) expressionType(*a, scopes, functions, program, loopStack);
+        } else if (s.type == Statement::Type::ExpressionStatement) expressionType(*s.expression, scopes, functions, program, loopStack);
         else if (s.type == Statement::Type::Return) {
             if (!s.expression && !returnType.empty() && returnType != "void") throw std::runtime_error("Function must return a value of type " + returnType);
             if (s.expression) {
-                const auto actual = expressionType(*s.expression, scopes, functions, program);
+                const auto actual = expressionType(*s.expression, scopes, functions, program, loopStack);
                 if (returnType.empty() || returnType == "void") throw std::runtime_error("Void function cannot return a value");
                 if (actual == "void") throw std::runtime_error("Cannot return a void expression");
                 if (!assignable(returnType, actual)) throw std::runtime_error("Return value must be " + returnType + ", got " + actual);
             }
         } else if (s.type == Statement::Type::If) {
             for (const auto& branch : s.branches) {
-                const auto conditionType = expressionType(*branch.condition, scopes, functions, program);
+                const auto conditionType = expressionType(*branch.condition, scopes, functions, program, loopStack);
                 if (conditionType != "bool" && conditionType != "any") throw std::runtime_error("if condition must be bool");
                 scopes.emplace_back(); checkStatements(branch.statements, scopes, functions, program, returnType, loopStack); scopes.pop_back();
             }
@@ -323,21 +366,25 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
         } else if (s.type == Statement::Type::For) {
             scopes.emplace_back();
             checkStatements(s.initializer, scopes, functions, program, returnType, loopStack);
+            if (!s.loopName.empty() && std::find(loopStack.begin(), loopStack.end(), s.loopName) != loopStack.end())
+                throw std::runtime_error("Loop name is already active: " + s.loopName);
+            loopStack.push_back(s.loopName);
             if (s.expression) {
-                const auto conditionType = expressionType(*s.expression, scopes, functions, program);
+                const auto conditionType = expressionType(*s.expression, scopes, functions, program, loopStack);
                 if (conditionType != "bool" && conditionType != "any") throw std::runtime_error("for-loop condition must be bool");
             }
-            loopStack.push_back(s.loopName);
             scopes.emplace_back();
             checkStatements(s.loopStatements, scopes, functions, program, returnType, loopStack);
             scopes.pop_back();
-            loopStack.pop_back();
             checkStatements(s.post, scopes, functions, program, returnType, loopStack);
+            loopStack.pop_back();
+            scopes.emplace_back();
+            checkStatements(s.loopElseStatements, scopes, functions, program, returnType, loopStack);
+            scopes.pop_back();
             scopes.pop_back();
         } else if (s.type == Statement::Type::Break) {
             if (loopStack.empty()) throw std::runtime_error("break can only be used inside a loop");
-            if (!s.name.empty() && std::find(loopStack.begin(), loopStack.end(), s.name) == loopStack.end())
-                throw std::runtime_error("Unknown loop name in break: " + s.name);
+            if (!s.name.empty()) requireLoopTarget(s.name, loopStack);
         }
     }
 }

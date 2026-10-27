@@ -1,0 +1,66 @@
+using std
+
+/*
+Looping with for
+Author: rif-t 27.10.2026 13:42 GMT+2:00
+
+*/
+
+func main(){
+    for i:=0; i<=10; i++{               // Just a simple 0 to 10 loop
+        print("i: {}, " , i)            // 0,1,2,...,10
+    }
+
+    println("\nAnother loop:\n")
+
+    our_loop : for i:=100; i>=0; i-=10{ // Named for loop with name "our_loop"
+        if i==20{
+            println("The end of loop.")
+            break our_loop              // Breaking our_loop
+        }else{
+            println("i: {}", i)
+        }
+    }
+
+    println("\nNamed loops feature 1: iteration\n")
+
+    another_loop : for i:=1; i<=1024; i*=2{
+
+        println("Iteration: {} Number: {}", another_loop.iteration, i) // Prints the number of iteration
+
+    }
+
+    println("\nNamed loops feature 2: limit\n")
+
+    another_loop : for i:=1; i<=1024; i*=2{
+
+        another_loop.limit = 8          // Limits the number of iterations to 8, infinite by default
+        println("Iteration: {} Number: {}", another_loop.iteration, i)
+
+    }
+
+    println("\nNamed loops feature 3: skip\n")
+
+    another_loop : for i:=1; i<=1024; i*=2{
+
+        println("Iteration: {} Number: {}", another_loop.iteration, i)
+
+        if another_loop.iteration == 5{
+            another_loop.skip(3)
+            println("SKIP")
+        }
+        
+    }
+
+    println("\nNamed loops feature 4: else\n")
+
+    loop : for i:=1; loop.iteration<8; i*=2{
+
+        println("Iteration: {} Number: {}", loop.iteration, i)
+
+    }else{
+        println("Ended without break")
+    }
+
+
+}
