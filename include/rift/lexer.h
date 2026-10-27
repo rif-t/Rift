@@ -13,6 +13,8 @@ enum class TokenType
     Func,
     Using,
     Return,
+    For,
+    Break,
     NamespaceKeyword,
     Const,
     Int,

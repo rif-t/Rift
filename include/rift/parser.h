@@ -26,6 +26,7 @@ private:
     Statement parseStatement();
     Statement parsePrint();
     Statement parseIf();
+    Statement parseFor(std::string loopName = {});
     std::vector<Statement> parseBlock();
     VariableDeclaration parseVariable();
 

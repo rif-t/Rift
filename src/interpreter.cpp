@@ -28,6 +28,10 @@ struct ScopePopGuard {
     ScopeStack& scopes;
     ~ScopePopGuard() { scopes.pop_back(); }
 };
+
+struct BreakSignal {
+    std::string target;
+};
 }
 
 void Interpreter::run(const Program& program)
@@ -170,6 +174,27 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 ScopePopGuard guard{scopes_};
                 executeStatements(statement.elseStatements);
             }
+        } else if (statement.type == Statement::Type::For) {
+            scopes_.emplace_back();
+            ScopePopGuard loopScope{scopes_};
+            executeStatements(statement.initializer);
+            while (!statement.expression || requireBoolean(evaluate(*statement.expression), "for-loop condition")) {
+                bool shouldBreak = false;
+                scopes_.emplace_back();
+                {
+                    ScopePopGuard bodyScope{scopes_};
+                    try {
+                        executeStatements(statement.loopStatements);
+                    } catch (const BreakSignal& signal) {
+                        if (signal.target.empty() || signal.target == statement.loopName) shouldBreak = true;
+                        else throw;
+                    }
+                }
+                if (shouldBreak) break;
+                executeStatements(statement.post);
+            }
+        } else if (statement.type == Statement::Type::Break) {
+            throw BreakSignal{statement.name};
         } else if (statement.type == Statement::Type::Return) {
             ReturnSignal signal;
             if (statement.expression) signal.value = evaluate(*statement.expression);

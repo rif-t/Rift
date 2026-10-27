@@ -68,6 +68,8 @@ struct Statement
         Assignment,
         Print,
         If,
+        For,
+        Break,
         Return,
         ExpressionStatement
     };
@@ -82,6 +84,10 @@ struct Statement
     bool newline = true;
     std::vector<IfBranch> branches;
     std::vector<Statement> elseStatements;
+    std::string loopName;
+    std::vector<Statement> initializer;
+    std::vector<Statement> post;
+    std::vector<Statement> loopStatements;
 };
 
 struct Function

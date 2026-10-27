@@ -92,3 +92,42 @@ run_rift_case(function_overload_duplicate_signature [=[func same(first: int) -> 
 func same(second: int32) -> int { return second }
 func main() {}
 ]=] 1 "Duplicate function overload: same")
+
+run_rift_case(for_loop_counting [=[using std
+func main() {
+    total := 0
+    for i := 0; i < 10; i++ {
+        total += i
+    }
+    println("{}", total)
+}
+]=] 0 "45")
+
+run_rift_case(for_loop_named_break [=[using std
+func main() {
+    count := 0
+    loop : for j:double=3.0d, j>=0.0d; j-=1.0d {
+        count++
+        for k := 0; k < 3; k++ {
+            break loop
+        }
+    }
+    println("{}", count)
+}
+]=] 0 "1")
+
+run_rift_case(for_loop_unlabeled_break [=[using std
+func main() {
+    count := 0
+    for i := 0; true; i++ {
+        if i == 3 { break }
+        count++
+    }
+    println("{}", count)
+}
+]=] 0 "3")
+
+run_rift_case(break_outside_loop [=[func main() {
+    break
+}
+]=] 1 "break can only be used inside a loop")

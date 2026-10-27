@@ -169,6 +169,21 @@ std::string Parser::parseType(bool allowVoid)
 
 Statement Parser::parseStatement()
 {
+    if (current().type == TokenType::Break) {
+        consume();
+        Statement statement;
+        statement.type = Statement::Type::Break;
+        if (current().type == TokenType::Identifier) statement.name = consume().text;
+        if (current().type == TokenType::Semicolon) consume();
+        return statement;
+    }
+    if (current().type == TokenType::For) return parseFor();
+    if (current().type == TokenType::Identifier && position_ + 2 < tokens_.size() &&
+        tokens_[position_ + 1].type == TokenType::Colon && tokens_[position_ + 2].type == TokenType::For) {
+        const std::string loopName = consume().text;
+        consume();
+        return parseFor(loopName);
+    }
     if (current().type == TokenType::Return) {
         consume();
         Statement statement;
@@ -244,6 +259,71 @@ Statement Parser::parseStatement()
     );
 
     return statement;
+}
+
+Statement Parser::parseFor(std::string loopName)
+{
+    expect(TokenType::For);
+    const bool parenthesized = current().type == TokenType::LeftParen;
+    if (parenthesized) consume();
+
+    Statement loop;
+    loop.type = Statement::Type::For;
+    loop.loopName = std::move(loopName);
+
+    if (current().type == TokenType::LeftBrace) {
+        loop.expression = std::make_unique<Expression>();
+        loop.expression->type = Expression::Type::Boolean;
+        loop.expression->value = true;
+    } else if (current().type == TokenType::Identifier &&
+        (peek().type == TokenType::Colon || peek().type == TokenType::ColonEqual)) {
+        VariableDeclaration declaration;
+        declaration.names.push_back(consume().text);
+        declaration.type = "auto";
+        bool inferred = false;
+        if (current().type == TokenType::ColonEqual) { consume(); inferred = true; }
+        else { consume(); declaration.type = parseType(); }
+        if (current().type == TokenType::Equal) consume();
+        else if (!inferred) throw std::runtime_error("Expected '=' after for-loop variable declaration");
+        declaration.values.push_back(parseExpression());
+        Statement initializer;
+        initializer.type = Statement::Type::VariableDeclaration;
+        initializer.variable = std::make_unique<VariableDeclaration>(std::move(declaration));
+        loop.initializer.push_back(std::move(initializer));
+
+        if (current().type == TokenType::Comma) {
+            consume();
+            loop.expression = parseExpression();
+            expect(TokenType::Semicolon);
+            Statement post = parseStatement();
+            loop.post.push_back(std::move(post));
+        } else if (current().type == TokenType::Semicolon) {
+            consume();
+            if (current().type != TokenType::Semicolon) loop.expression = parseExpression();
+            expect(TokenType::Semicolon);
+            if (current().type != TokenType::LeftBrace && current().type != TokenType::RightParen)
+                loop.post.push_back(parseStatement());
+        } else {
+            throw std::runtime_error("Expected ',' or ';' after for-loop initializer");
+        }
+    } else if (current().type == TokenType::Semicolon) {
+        consume();
+        if (current().type != TokenType::Semicolon) loop.expression = parseExpression();
+        expect(TokenType::Semicolon);
+        if (current().type != TokenType::LeftBrace && current().type != TokenType::RightParen)
+            loop.post.push_back(parseStatement());
+    } else {
+        loop.expression = parseExpression();
+        if (current().type == TokenType::Semicolon) {
+            consume();
+            if (current().type != TokenType::LeftBrace && current().type != TokenType::RightParen)
+                loop.post.push_back(parseStatement());
+        }
+    }
+
+    if (parenthesized) expect(TokenType::RightParen);
+    loop.loopStatements = parseBlock();
+    return loop;
 }
 
 std::vector<Statement> Parser::parseBlock()

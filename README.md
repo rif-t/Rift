@@ -81,6 +81,24 @@ func label(value: int) -> string { return "integer" }
 func label(value: string) -> string { return "text" }
 ```
 
+## For loops
+
+`for` supports an initializer, condition, and post statement. The initializer
+can declare a scoped variable. A label before `for` lets `break` exit a
+specific enclosing loop; an unlabelled `break` exits the innermost loop.
+
+```rift
+for i := 0; i < 10; i++ {
+    println("{}", i)
+}
+
+outer: for value:double = 10.0d, value >= 0.0d; value -= 1.0d {
+    if value == 4.0d {
+        break outer
+    }
+}
+```
+
 ## Namespaces
 
 Use namespaces to group functions. Call a function with its namespace name,

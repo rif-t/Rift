@@ -269,7 +269,7 @@ bool returnsOnAllPaths(const std::vector<Statement>& statements)
     return false;
 }
 
-void checkStatements(const std::vector<Statement>& statements, Types& scopes, const Functions& functions, const Program& program, const std::string& returnType)
+void checkStatements(const std::vector<Statement>& statements, Types& scopes, const Functions& functions, const Program& program, const std::string& returnType, std::vector<std::string>& loopStack)
 {
     for (const auto& s : statements) {
         if (s.type == Statement::Type::VariableDeclaration) {
@@ -317,9 +317,27 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
             for (const auto& branch : s.branches) {
                 const auto conditionType = expressionType(*branch.condition, scopes, functions, program);
                 if (conditionType != "bool" && conditionType != "any") throw std::runtime_error("if condition must be bool");
-                scopes.emplace_back(); checkStatements(branch.statements, scopes, functions, program, returnType); scopes.pop_back();
+                scopes.emplace_back(); checkStatements(branch.statements, scopes, functions, program, returnType, loopStack); scopes.pop_back();
             }
-            if (!s.elseStatements.empty()) { scopes.emplace_back(); checkStatements(s.elseStatements, scopes, functions, program, returnType); scopes.pop_back(); }
+            if (!s.elseStatements.empty()) { scopes.emplace_back(); checkStatements(s.elseStatements, scopes, functions, program, returnType, loopStack); scopes.pop_back(); }
+        } else if (s.type == Statement::Type::For) {
+            scopes.emplace_back();
+            checkStatements(s.initializer, scopes, functions, program, returnType, loopStack);
+            if (s.expression) {
+                const auto conditionType = expressionType(*s.expression, scopes, functions, program);
+                if (conditionType != "bool" && conditionType != "any") throw std::runtime_error("for-loop condition must be bool");
+            }
+            loopStack.push_back(s.loopName);
+            scopes.emplace_back();
+            checkStatements(s.loopStatements, scopes, functions, program, returnType, loopStack);
+            scopes.pop_back();
+            loopStack.pop_back();
+            checkStatements(s.post, scopes, functions, program, returnType, loopStack);
+            scopes.pop_back();
+        } else if (s.type == Statement::Type::Break) {
+            if (loopStack.empty()) throw std::runtime_error("break can only be used inside a loop");
+            if (!s.name.empty() && std::find(loopStack.begin(), loopStack.end(), s.name) == loopStack.end())
+                throw std::runtime_error("Unknown loop name in break: " + s.name);
         }
     }
 }
@@ -350,7 +368,8 @@ void validateProgram(const Program& program)
             if (!params.insert(name).second) throw std::runtime_error("Duplicate parameter '" + name + "' in function '" + f.name + "'");
             scopes.back()[name] = {type, false};
         }
-        checkStatements(f.statements, scopes, functions, program, f.returnType);
+        std::vector<std::string> loopStack;
+        checkStatements(f.statements, scopes, functions, program, f.returnType, loopStack);
         if (!f.returnType.empty() && f.returnType != "void" && !returnsOnAllPaths(f.statements))
             throw std::runtime_error("Function '" + f.name + "' may complete without returning a value");
     }
