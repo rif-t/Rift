@@ -187,8 +187,8 @@ Decimal decimalArithmetic(const std::string& op, Decimal a, Decimal b)
         return normalized({sum.magnitude, sum.negative, scale});
     }
     if (op == "*") {
-        while (a.scale && b.coefficient.low % 10 == 0) { b.coefficient = divide10(b.coefficient); --a.scale; }
-        while (b.scale && a.coefficient.low % 10 == 0) { a.coefficient = divide10(a.coefficient); --b.scale; }
+        while (a.scale) { UInt128 remainder{}; const UInt128 quotient = UInt128::divide(b.coefficient, {0, 10}, remainder); if (remainder.low) break; b.coefficient = quotient; --a.scale; }
+        while (b.scale) { UInt128 remainder{}; const UInt128 quotient = UInt128::divide(a.coefficient, {0, 10}, remainder); if (remainder.low) break; a.coefficient = quotient; --b.scale; }
         bool overflow = false;
         UInt128 product = UInt128::multiply(a.coefficient, b.coefficient, overflow);
         if (overflow) throw std::runtime_error("Decimal overflow");
