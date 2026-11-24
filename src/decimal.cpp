@@ -22,6 +22,28 @@ UInt128 multiply10(UInt128 value)
     return value;
 }
 
+UInt128 addModulo(UInt128 a, UInt128 b, UInt128 modulus)
+{
+    const UInt128 gap = UInt128::subtract(modulus, b);
+    if (!(a < gap)) return UInt128::subtract(a, gap);
+    bool overflow = false;
+    return UInt128::add(a, b, overflow);
+}
+
+UInt128 divide10(UInt128 value)
+{
+    UInt128 remainder{};
+    return UInt128::divide(value, {0, 10}, remainder);
+}
+
+UInt128 multiply10Modulo(UInt128 value, UInt128 modulus)
+{
+    const UInt128 twice = addModulo(value, value, modulus);
+    const UInt128 fourTimes = addModulo(twice, twice, modulus);
+    const UInt128 eightTimes = addModulo(fourTimes, fourTimes, modulus);
+    return addModulo(eightTimes, twice, modulus);
+}
+
 Decimal normalized(Decimal value)
 {
     while (value.scale) {
@@ -165,6 +187,8 @@ Decimal decimalArithmetic(const std::string& op, Decimal a, Decimal b)
         return normalized({sum.magnitude, sum.negative, scale});
     }
     if (op == "*") {
+        while (a.scale && b.coefficient.low % 10 == 0) { b.coefficient = divide10(b.coefficient); --a.scale; }
+        while (b.scale && a.coefficient.low % 10 == 0) { a.coefficient = divide10(a.coefficient); --b.scale; }
         bool overflow = false;
         UInt128 product = UInt128::multiply(a.coefficient, b.coefficient, overflow);
         if (overflow) throw std::runtime_error("Decimal overflow");
@@ -175,23 +199,32 @@ Decimal decimalArithmetic(const std::string& op, Decimal a, Decimal b)
     }
     if (op == "%") {
         const unsigned scale = std::max(a.scale, b.scale);
-        for (unsigned i = a.scale; i < scale; ++i) a.coefficient = multiply10(a.coefficient);
-        for (unsigned i = b.scale; i < scale; ++i) b.coefficient = multiply10(b.coefficient);
         if (b.coefficient == UInt128{}) throw std::runtime_error("Remainder by zero");
-        UInt128 remainder{}; UInt128::divide(a.coefficient, b.coefficient, remainder);
+        UInt128 remainder{};
+        if (a.scale < scale) {
+            UInt128 reduced{}; UInt128::divide(a.coefficient, b.coefficient, reduced);
+            remainder = reduced;
+            for (unsigned i = a.scale; i < scale; ++i) remainder = multiply10Modulo(remainder, b.coefficient);
+        } else {
+            UInt128 divisor = b.coefficient;
+            try { for (unsigned i = b.scale; i < scale; ++i) divisor = multiply10(divisor); }
+            catch (const std::runtime_error&) { return normalized({a.coefficient, a.negative, scale}); }
+            UInt128::divide(a.coefficient, divisor, remainder);
+        }
         return normalized({remainder, a.negative, scale});
     }
     if (op == "/") {
         if (b.coefficient == UInt128{}) throw std::runtime_error("Division by zero");
         for (int outScale = 18; outScale >= 0; --outScale) {
-            const int power = outScale + static_cast<int>(a.scale) - static_cast<int>(b.scale);
+            const int power = outScale + static_cast<int>(b.scale) - static_cast<int>(a.scale);
             UInt128 numerator = a.coefficient, denominator = b.coefficient;
             try {
                 if (power >= 0) for (int i = 0; i < power; ++i) numerator = multiply10(numerator);
                 else for (int i = 0; i < -power; ++i) denominator = multiply10(denominator);
             } catch (...) { continue; }
             UInt128 rem{}; UInt128 quotient = UInt128::divide(numerator, denominator, rem);
-            return normalized({quotient, a.negative != b.negative, static_cast<unsigned>(outScale)});
+            try { return normalized({quotient, a.negative != b.negative, static_cast<unsigned>(outScale)}); }
+            catch (const std::runtime_error&) { continue; }
         }
         throw std::runtime_error("Decimal division overflow");
     }
