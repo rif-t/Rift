@@ -12,6 +12,15 @@ func main() {
 }
 ]=] 0 "int16\n2\n")
 
+run_rift_case(any_argument_selects_any_overload [=[using std
+func choose(value: int) -> string { return "int" }
+func choose(value: any) -> string { return "any" }
+func forward(value: any) -> string { return choose(value) }
+func main() {
+    println(forward("text"))
+}
+]=] 0 "any\n")
+
 run_rift_case_contains(validate_call_before_execution [=[using std
 func takes_int(value: int) {
 }

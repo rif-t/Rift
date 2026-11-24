@@ -90,8 +90,8 @@ const Function* selectOverload(const std::string& name, const std::vector<const 
             const auto target = canonicalType(candidate->parameters[i].second);
             const auto source = canonicalType(argumentTypes[i]);
             if (target == source) continue;
+            if (source == "any") { matches = false; break; }
             if (target == "any") { score += 2; continue; }
-            if (source == "any") { score += 1; continue; }
             if (numeric(target) && numeric(source)) { score += 1; continue; }
             matches = false;
             break;
