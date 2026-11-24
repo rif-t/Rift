@@ -18,10 +18,11 @@ struct UInt128
     static UInt128 add(UInt128 a, UInt128 b, bool& overflow)
     {
         UInt128 r{a.high + b.high, a.low + b.low};
+        const bool highOverflow = r.high < a.high;
         const bool carry = r.low < a.low;
         const auto oldHigh = r.high;
         r.high += static_cast<std::uint64_t>(carry);
-        overflow = r.high < oldHigh || r.high < a.high;
+        overflow = highOverflow || r.high < oldHigh;
         return r;
     }
 

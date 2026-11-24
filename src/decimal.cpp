@@ -87,14 +87,22 @@ Decimal Decimal::parse(const std::string& text)
     if (!anyDigit) throw std::runtime_error("Invalid decimal value: " + text);
     if (pos < text.size()) {
         ++pos;
-        try { exponent = std::stoi(text.substr(pos)); }
+        std::size_t parsed = 0;
+        try { exponent = std::stoi(text.substr(pos), &parsed); }
         catch (...) { throw std::runtime_error("Invalid decimal exponent: " + text); }
+        if (parsed != text.size() - pos) throw std::runtime_error("Invalid decimal exponent: " + text);
     }
-    if (exponent < 0) scale += static_cast<unsigned>(-exponent);
-    else if (static_cast<unsigned>(exponent) >= scale) {
-        digits.append(static_cast<std::size_t>(exponent) - scale, '0'); scale = 0;
-    } else scale -= static_cast<unsigned>(exponent);
-    while (digits.size() > 1 && digits.front() == '0') digits.erase(digits.begin());
+    const std::size_t firstNonZero = digits.find_first_not_of('0');
+    if (firstNonZero == std::string::npos) return {};
+    digits.erase(0, firstNonZero);
+    const long long adjustedScale = static_cast<long long>(scale) - exponent;
+    if (adjustedScale < 0) {
+        const auto zeros = static_cast<std::size_t>(-adjustedScale);
+        if (digits.size() + zeros > 39) throw std::runtime_error("Decimal coefficient exceeds signed 128-bit range");
+        digits.append(zeros, '0'); scale = 0;
+    } else {
+        scale = static_cast<unsigned>(adjustedScale);
+    }
     while (scale && !digits.empty() && digits.back() == '0') { digits.pop_back(); --scale; }
     if (scale > 18) throw std::runtime_error("Decimal supports at most 18 fractional digits");
     if (digits.empty()) digits = "0";

@@ -94,3 +94,11 @@ func main() {
     println(maximum + 1)
 }
 ]=] 1 "128-bit integer overflow")
+
+run_rift_case_contains(unsigned_128_overflow_with_low_carry [=[using std
+func main() {
+    left: uint128 = 340282366920938463463374607431768211455
+    right: uint128 = 340282366920938463444927863358058659841
+    println(left + right)
+}
+]=] 1 "128-bit integer overflow")
