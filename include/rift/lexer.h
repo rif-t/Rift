@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+namespace rift {
+
 enum class TokenType
 {
     Identifier,
@@ -72,6 +74,8 @@ struct Token
     std::string text;
     std::size_t line = 1;
     std::size_t column = 1;
+    std::size_t endLine = 1;
+    std::size_t endColumn = 1;
 };
 
 class Lexer
@@ -90,3 +94,5 @@ private:
     std::size_t line_ = 1;
     std::size_t column_ = 1;
 };
+
+}

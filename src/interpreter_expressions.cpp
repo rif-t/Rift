@@ -8,6 +8,8 @@
 #include <sstream>
 #include <stdexcept>
 
+namespace rift {
+
 using namespace rift::runtime;
 
 namespace {
@@ -118,6 +120,19 @@ RuntimeValue typeBuiltin(const std::string& name, const std::vector<RuntimeValue
 
 RuntimeValue Interpreter::evaluate(const Expression& expression)
 {
+    try {
+        return evaluateImpl(expression);
+    } catch (const std::runtime_error& error) {
+        const std::string message = error.what();
+        if (message.starts_with("at line ")) throw;
+        const auto& source = expression.source;
+        throw std::runtime_error("at line " + std::to_string(source.start.line) + ", column " +
+            std::to_string(source.start.column) + ": " + message);
+    }
+}
+
+RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
+{
     switch (expression.type) {
     case Expression::Type::Number:
         return expression.value;
@@ -205,7 +220,7 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
     case Expression::Type::Conditional: {
         const bool condition = requireBoolean(evaluate(*expression.left), "Conditional expression condition");
         RuntimeValue result = evaluate(condition ? *expression.right : *expression.third);
-        const std::string& type = expression.resolvedType;
+        const std::string& type = analysis_->expressions.at(&expression).resolvedType;
         if (type == "float" || type == "double" || type == "decimal" || type == "int" || type.starts_with("int") || type.starts_with("uint"))
             return validateValue(std::move(result), type, "conditional expression");
         return result;
@@ -284,8 +299,10 @@ RuntimeValue Interpreter::evaluate(const Expression& expression)
         std::vector<RuntimeValue> arguments;
         arguments.reserve(expression.arguments.size());
         for (const auto& argument : expression.arguments) arguments.push_back(evaluate(*argument));
-        return callFunction(expression.name, arguments, expression.resolvedFunction);
+        return callFunction(expression.name, arguments, analysis_->expressions.at(&expression).resolvedFunction);
     }
     }
     throw std::runtime_error("Unknown expression");
+}
+
 }

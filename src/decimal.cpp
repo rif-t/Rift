@@ -5,6 +5,8 @@
 #include <cmath>
 #include <stdexcept>
 
+namespace rift {
+
 namespace {
 void checkRange(const Decimal& value)
 {
@@ -241,4 +243,6 @@ Decimal decimalArithmetic(const std::string& op, Decimal a, Decimal b)
         return result;
     }
     throw std::runtime_error("Unknown decimal operator");
+}
+
 }

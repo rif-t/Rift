@@ -5,6 +5,8 @@
 #include <limits>
 #include <stdexcept>
 
+namespace rift {
+
 using namespace rift::runtime;
 
 namespace {
@@ -41,7 +43,8 @@ std::uint64_t loopCount(const RuntimeValue& value, const std::string& purpose)
 
 void Interpreter::run(const Program& program)
 {
-    validateProgram(program);
+    const AnalysisResult analysis = validateProgram(program);
+    analysis_ = &analysis;
     functions_.clear();
     usingNamespaces_ = program.usingNamespaces;
     for (const auto& function : program.functions) functions_[function.name].push_back(&function);
@@ -291,4 +294,6 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
             evaluate(*statement.expression);
         }
     }
+}
+
 }

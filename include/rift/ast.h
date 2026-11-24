@@ -9,7 +9,12 @@
 #include <utility>
 #include <vector>
 
+namespace rift {
+
 using RuntimeValue = std::variant<WideInteger, float, double, Decimal, bool, std::string, std::u16string, char16_t, std::monostate>;
+
+struct SourcePosition { std::size_t line = 1; std::size_t column = 1; };
+struct SourceSpan { SourcePosition start; SourcePosition end; };
 
 struct Function;
 
@@ -30,8 +35,7 @@ struct Expression
     };
 
     Type type;
-    mutable std::string resolvedType;
-    mutable const Function* resolvedFunction = nullptr;
+    SourceSpan source;
 
     RuntimeValue value = WideInteger{};
     std::string name;
@@ -105,3 +109,5 @@ struct Program
     std::vector<Function> functions;
     std::vector<std::string> usingNamespaces;
 };
+
+}

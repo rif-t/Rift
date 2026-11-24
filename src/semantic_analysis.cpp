@@ -6,12 +6,15 @@
 #include <unordered_map>
 #include <unordered_set>
 
+namespace rift {
+
 namespace {
 struct TypeInfo { std::string type; bool isConst = false; };
 using Types = std::vector<std::unordered_map<std::string, TypeInfo>>;
 using Functions = std::unordered_map<std::string, std::vector<const Function*>>;
 struct LoopInfo { std::string name; bool supportsRestartSkip = true; };
 using LoopStack = std::vector<LoopInfo>;
+thread_local AnalysisResult* activeAnalysis = nullptr;
 
 std::string canonicalType(std::string type)
 {
@@ -285,7 +288,7 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
         const auto candidates = resolve(e.name, functions, program);
         if (candidates.empty()) throw std::runtime_error("Undefined function: " + e.name);
         const Function* f = selectOverload(e.name, candidates, argumentTypes);
-        e.resolvedFunction = f;
+        activeAnalysis->expressions[&e].resolvedFunction = f;
         return f->returnType.empty() ? "void" : f->returnType;
     }
     }
@@ -294,8 +297,16 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
 
 std::string expressionType(const Expression& e, Types& scopes, const Functions& functions, const Program& program, const LoopStack& loopStack)
 {
-    e.resolvedType = inferExpressionType(e, scopes, functions, program, loopStack);
-    return e.resolvedType;
+    try {
+        auto type = inferExpressionType(e, scopes, functions, program, loopStack);
+        activeAnalysis->expressions[&e].resolvedType = type;
+        return type;
+    } catch (const std::runtime_error& error) {
+        const std::string message = error.what();
+        if (message.starts_with("at line ")) throw;
+        throw std::runtime_error("at line " + std::to_string(e.source.start.line) + ", column " +
+            std::to_string(e.source.start.column) + ": " + message);
+    }
 }
 
 bool returnsOnAllPaths(const std::vector<Statement>& statements)
@@ -397,8 +408,14 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
 }
 }
 
-void validateProgram(const Program& program)
+AnalysisResult validateProgram(const Program& program)
 {
+    AnalysisResult result;
+    struct RestoreAnalysis {
+        AnalysisResult* previous;
+        ~RestoreAnalysis() { activeAnalysis = previous; }
+    } restore{activeAnalysis};
+    activeAnalysis = &result;
     Functions functions;
     std::unordered_map<std::string, std::unordered_set<std::string>> signatures;
     for (const auto& function : program.functions) {
@@ -427,4 +444,7 @@ void validateProgram(const Program& program)
         if (!f.returnType.empty() && f.returnType != "void" && !returnsOnAllPaths(f.statements))
             throw std::runtime_error("Function '" + f.name + "' may complete without returning a value");
     }
+    return result;
+}
+
 }

@@ -75,7 +75,7 @@ execute_process(
 )
 normalize_newlines(failure_stdout_normalized "${failure_stdout}")
 normalize_newlines(failure_stderr_normalized "${failure_stderr}")
-set(expected_failure_stderr "Error: Unknown std.types function: does_not_exist\n")
+set(expected_failure_stderr "Error: at line 5, column 5: Unknown std.types function: does_not_exist\n")
 if(NOT "${failure_status}" STREQUAL "1" OR NOT "${failure_stdout_normalized}" STREQUAL "" OR
    NOT "${failure_stderr_normalized}" STREQUAL "${expected_failure_stderr}")
     message(FATAL_ERROR

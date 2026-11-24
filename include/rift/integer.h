@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <string>
 
+namespace rift {
+
 struct UInt128
 {
     std::uint64_t high = 0;
@@ -165,4 +167,6 @@ inline bool integerFitsType(const WideInteger& value, const std::string& type)
         else limit.low += 1;
     }
     return !(limit < value.magnitude);
+}
+
 }

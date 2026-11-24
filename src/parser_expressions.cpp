@@ -2,9 +2,37 @@
 
 #include <stdexcept>
 
+namespace rift {
+
 std::unique_ptr<Expression> Parser::parseExpression()
 {
-    return parseConditional();
+    const auto start = position_;
+    auto expression = parseConditional();
+    setSpan(*expression, start, position_);
+    return expression;
+}
+
+void Parser::setSpan(Expression& expression, std::size_t start, std::size_t end) const
+{
+    const auto& first = tokens_[start];
+    const auto& last = tokens_[end - 1];
+    expression.source = {{first.line, first.column}, {last.endLine, last.endColumn}};
+    const auto fillMissing = [&](auto&& self, Expression& node) -> void {
+        for (auto* child : {node.left.get(), node.right.get(), node.third.get()}) {
+            if (!child) continue;
+            if (child->source.start.line == 1 && child->source.start.column == 1 &&
+                child->source.end.line == 1 && child->source.end.column == 1)
+                child->source = expression.source;
+            self(self, *child);
+        }
+        for (auto& argument : node.arguments) {
+            if (argument->source.start.line == 1 && argument->source.start.column == 1 &&
+                argument->source.end.line == 1 && argument->source.end.column == 1)
+                argument->source = expression.source;
+            self(self, *argument);
+        }
+    };
+    fillMissing(fillMissing, expression);
 }
 
 std::unique_ptr<Expression> Parser::parseConditional()
@@ -91,11 +119,11 @@ std::unique_ptr<Expression> Parser::parseAdditive()
 
 std::unique_ptr<Expression> Parser::parseMultiplicative()
 {
-    auto left = parsePower();
+    auto left = parseUnary();
 
     while (current().type == TokenType::Multiply || current().type == TokenType::Divide || current().type == TokenType::Remainder) {
         const TokenType operation = consume().type;
-        auto right = parsePower();
+        auto right = parseUnary();
 
         auto expression = std::make_unique<Expression>();
         expression->type = Expression::Type::Binary;
@@ -114,7 +142,7 @@ std::unique_ptr<Expression> Parser::parsePower()
 
     if (current().type == TokenType::Power) {
         consume();
-        auto right = parsePower();
+        auto right = parseUnary();
 
         auto expression = std::make_unique<Expression>();
         expression->type = Expression::Type::Binary;
@@ -125,6 +153,20 @@ std::unique_ptr<Expression> Parser::parsePower()
     }
 
     return left;
+}
+
+std::unique_ptr<Expression> Parser::parseUnary()
+{
+    if (current().type != TokenType::Minus && current().type != TokenType::Not)
+        return parsePower();
+    const auto start = position_;
+    const TokenType operation = consume().type;
+    auto expression = std::make_unique<Expression>();
+    expression->type = Expression::Type::Unary;
+    expression->operation = operation == TokenType::Minus ? "-" : "!";
+    expression->left = parseUnary();
+    setSpan(*expression, start, position_);
+    return expression;
 }
 
 std::unique_ptr<Expression> Parser::parsePrimary()
@@ -138,15 +180,6 @@ std::unique_ptr<Expression> Parser::parsePrimary()
         expression->type = Expression::Type::TypeName;
         expression->name = token.text;
         consume();
-        return expression;
-    }
-
-    if (token.type == TokenType::Minus || token.type == TokenType::Not) {
-        consume();
-        auto expression = std::make_unique<Expression>();
-        expression->type = Expression::Type::Unary;
-        expression->operation = token.type == TokenType::Minus ? "-" : "!";
-        expression->left = parsePrimary();
         return expression;
     }
 
@@ -232,4 +265,6 @@ std::unique_ptr<Expression> Parser::parsePrimary()
 
     throw std::runtime_error("Expected expression at line " + std::to_string(current().line) +
         ", column " + std::to_string(current().column));
+}
+
 }

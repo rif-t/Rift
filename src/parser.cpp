@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <stdexcept>
 
+namespace rift {
+
 namespace {
 std::string tokenName(TokenType type)
 {
@@ -451,4 +453,6 @@ VariableDeclaration Parser::parseVariable()
     }
 
     return variable;
+}
+
 }

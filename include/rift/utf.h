@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include <string>
 
+namespace rift {
+
 inline std::u16string utf8ToUtf16(const std::string& input)
 {
     std::u16string output;
@@ -61,4 +63,6 @@ inline std::string utf16ToUtf8(const std::u16string& input)
         }
     }
     return output;
+}
+
 }

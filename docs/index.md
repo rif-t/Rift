@@ -9,5 +9,6 @@ These guides describe Rift's current syntax and runtime behavior.
 - [Namespaces](namespaces.md)
 - [Standard library overview](std.md)
 - [`std.types`](std-types.md)
+- [Expression precedence](precedence.md)
 
 For project setup and build instructions, see the [repository README](../README.md).

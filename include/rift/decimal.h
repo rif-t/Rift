@@ -4,6 +4,8 @@
 
 #include <string>
 
+namespace rift {
+
 // Fixed-scale decimal: signed 128-bit coefficient with at most 18 fractional
 // digits. Arithmetic is exact unless division requires discarded digits.
 struct Decimal
@@ -21,3 +23,5 @@ struct Decimal
 };
 
 Decimal decimalArithmetic(const std::string& operation, Decimal left, Decimal right);
+
+}

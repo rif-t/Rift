@@ -3,6 +3,8 @@
 #include <cctype>
 #include <stdexcept>
 
+namespace rift {
+
 Lexer::Lexer(const std::string& source)
     : source_(source)
 {
@@ -32,7 +34,7 @@ std::vector<Token> Lexer::tokenize()
         const std::size_t tokenLine = line_;
         const std::size_t tokenColumn = column_;
         auto emit = [&](TokenType type, const std::string& text) {
-            tokens.push_back({type, text, tokenLine, tokenColumn});
+            tokens.push_back({type, text, tokenLine, tokenColumn, line_, column_});
         };
         char c = current();
 
@@ -374,6 +376,8 @@ std::vector<Token> Lexer::tokenize()
             std::to_string(line_) + ", column " + std::to_string(column_));
     }
 
-    tokens.push_back({TokenType::EndOfFile, "<end of file>", line_, column_});
+    tokens.push_back({TokenType::EndOfFile, "<end of file>", line_, column_, line_, column_});
     return tokens;
+}
+
 }

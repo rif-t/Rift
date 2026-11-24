@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+namespace rift {
+
 class Parser
 {
 public:
@@ -40,7 +42,9 @@ private:
     std::unique_ptr<Expression> parseAdditive();
     std::unique_ptr<Expression> parseMultiplicative();
     std::unique_ptr<Expression> parsePower();
+    std::unique_ptr<Expression> parseUnary();
     std::unique_ptr<Expression> parsePrimary();
+    void setSpan(Expression& expression, std::size_t start, std::size_t end) const;
 
     const std::vector<Token>& tokens_;
     size_t position_ = 0;
@@ -48,3 +52,5 @@ private:
     std::string currentNamespace_;
     std::vector<std::string> usingNamespaces_;
 };
+
+}

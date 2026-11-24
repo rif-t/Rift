@@ -14,6 +14,11 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
+The `rift_core` library can be installed with `cmake --install build --prefix <prefix>`.
+Consumers can use `find_package(Rift CONFIG REQUIRED)` and link `rift::core`.
+The C++ API is in the `rift` namespace; include headers as `<rift/parser.h>`,
+`<rift/lexer.h>`, and `<rift/interpreter.h>`.
+
 ## Run a program
 
 Save this as `hello.rift`:

@@ -38,7 +38,36 @@ add_library(rift_core STATIC
     ${RIFT_PUBLIC_HEADERS}
     src/interpreter_internal.h
 )
-target_include_directories(rift_core PUBLIC "${PROJECT_SOURCE_DIR}/include/rift")
+add_library(rift::core ALIAS rift_core)
+set_target_properties(rift_core PROPERTIES EXPORT_NAME core)
+target_compile_features(rift_core PUBLIC cxx_std_23)
+target_include_directories(rift_core
+    PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/rift>
+        $<INSTALL_INTERFACE:include>
+)
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+    cmake/RiftConfig.cmake.in
+    "${PROJECT_BINARY_DIR}/RiftConfig.cmake"
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Rift"
+)
+write_basic_package_version_file(
+    "${PROJECT_BINARY_DIR}/RiftConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(TARGETS rift_core EXPORT RiftTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+install(DIRECTORY include/rift DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+install(EXPORT RiftTargets FILE RiftTargets.cmake NAMESPACE rift:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Rift")
+install(FILES
+    "${PROJECT_BINARY_DIR}/RiftConfig.cmake"
+    "${PROJECT_BINARY_DIR}/RiftConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Rift"
+)
 
 add_executable(rift src/main.cpp)
 target_link_libraries(rift PRIVATE rift_core)
