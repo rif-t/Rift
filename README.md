@@ -14,6 +14,9 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
+To build and package a release ZIP on Windows, run `./release.ps1` from PowerShell.
+It writes `release/Rift.zip` with `rift.exe`, the docs, examples, README, and license.
+
 The `rift_core` library can be installed with `cmake --install build --prefix <prefix>`.
 Consumers can use `find_package(Rift CONFIG REQUIRED)` and link `rift::core`.
 The C++ API is in the `rift` namespace; include headers as `<rift/parser.h>`,

@@ -27,6 +27,7 @@ dist/
 build/
 build-bench/
 /build-*/
+/release/
 out/
 target/
 coverage/
