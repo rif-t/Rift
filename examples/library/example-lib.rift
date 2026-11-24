@@ -1,3 +1,5 @@
+// Ayo, its a test library for import
+
 namespace test{
     func yo(){
         std.println("Import is WORKING!!!")
