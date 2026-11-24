@@ -1,0 +1,2 @@
+import math "math"
+func main() { math.answer() }

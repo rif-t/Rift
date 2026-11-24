@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(Rift
-    VERSION 0.2.0
+    VERSION 0.3.0
     LANGUAGES CXX
 )
 
@@ -16,6 +16,7 @@ set(RIFT_CORE_SOURCES
     src/interpreter_expressions.cpp
     src/interpreter_values.cpp
     src/lexer.cpp
+    src/module_loader.cpp
     src/parser.cpp
     src/parser_expressions.cpp
     src/semantic_analysis.cpp
@@ -28,6 +29,7 @@ set(RIFT_PUBLIC_HEADERS
     include/rift/integer.h
     include/rift/interpreter.h
     include/rift/lexer.h
+    include/rift/module_loader.h
     include/rift/parser.h
     include/rift/semantic_analysis.h
     include/rift/utf.h
@@ -92,6 +94,14 @@ add_rift_test(interpreter)
 add_rift_test(loops)
 add_rift_test(type_system)
 add_rift_test(integration)
+add_rift_test(imports)
+
+add_executable(rift_module_loader_api_test tests/module_loader_api.cpp)
+target_link_libraries(rift_module_loader_api_test PRIVATE rift_core)
+add_test(
+    NAME rift_module_loader_api
+    COMMAND rift_module_loader_api_test "${PROJECT_SOURCE_DIR}/tests/fixtures/module_loader/main.rift"
+)
 
 option(RIFT_BUILD_BENCHMARKS "Build Rift's profiling benchmarks" OFF)
 if(RIFT_BUILD_BENCHMARKS)

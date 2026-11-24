@@ -49,5 +49,6 @@ Feature guides are in [`docs/`](docs/index.md):
 - [Conditions and boolean expressions](docs/conditions.md)
 - [Loops](docs/loops.md)
 - [Namespaces](docs/namespaces.md)
+- [Imports](docs/imports.md)
 - [Standard library overview](docs/std.md)
 - [`std.types`](docs/std-types.md)

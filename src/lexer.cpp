@@ -59,6 +59,7 @@ std::vector<Token> Lexer::tokenize()
             if (text == "func") {
                 emit(TokenType::Func, text);
             }
+            else if (text == "import") emit(TokenType::Import, text);
             else if (text == "using") {
                 emit(TokenType::Using, text);
             }

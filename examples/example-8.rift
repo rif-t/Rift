@@ -1,0 +1,7 @@
+import "library/example-lib.rift"
+
+func main(){
+    test.yo();
+    test.nested.yo();
+    extra.yo();
+}

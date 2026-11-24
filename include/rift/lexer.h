@@ -13,6 +13,7 @@ enum class TokenType
     CharacterLiteral,
 
     Func,
+    Import,
     Using,
     Return,
     For,

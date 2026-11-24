@@ -104,10 +104,18 @@ struct Function
     std::vector<Statement> statements;
 };
 
+struct ImportDeclaration
+{
+    std::string path;
+    std::string alias;
+};
+
 struct Program
 {
     std::vector<Function> functions;
     std::vector<std::string> usingNamespaces;
+    std::vector<std::string> topLevelNamespaces;
+    std::vector<ImportDeclaration> imports;
 };
 
 }

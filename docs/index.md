@@ -7,6 +7,7 @@ These guides describe Rift's current syntax and runtime behavior.
 - [Conditions and boolean expressions](conditions.md)
 - [For loops](loops.md)
 - [Namespaces](namespaces.md)
+- [Imports](imports.md)
 - [Standard library overview](std.md)
 - [`std.types`](std-types.md)
 - [Expression precedence](precedence.md)

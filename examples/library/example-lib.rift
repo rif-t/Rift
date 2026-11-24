@@ -1,0 +1,16 @@
+namespace test{
+    func yo(){
+        std.println("Import is WORKING!!!")
+    }
+    namespace nested {
+        func yo() {
+            std.println("Nested namespace is WORKING!!!")
+        }
+    }
+}
+
+namespace extra {
+    func yo() {
+        std.println("Multiple namespaces are WORKING!!!")
+    }
+}

@@ -24,6 +24,7 @@ private:
 
     Function parseFunction();
     void parseNamespace(Program& program);
+    void parseImport(Program& program);
     std::string parseType(bool allowVoid = false);
     Statement parseStatement();
     Statement parsePrint();

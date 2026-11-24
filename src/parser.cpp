@@ -82,6 +82,9 @@ Program Parser::parse()
             if (current().type == TokenType::Semicolon) consume();
             if (namespaceName == "std") usingStd_ = true;
         }
+        else if (current().type == TokenType::Import) {
+            parseImport(program);
+        }
         else if (current().type == TokenType::Func) {
             program.functions.push_back(parseFunction());
         }
@@ -99,12 +102,25 @@ Program Parser::parse()
     return program;
 }
 
+void Parser::parseImport(Program& program)
+{
+    expect(TokenType::Import);
+    std::string alias;
+    if (current().type == TokenType::Identifier) alias = consume().text;
+    if (current().type != TokenType::StringLiteral) throw std::runtime_error("Expected import path string");
+    const std::string path = consume().text;
+    if (path.empty()) throw std::runtime_error("Import path cannot be empty");
+    if (current().type == TokenType::Semicolon) consume();
+    program.imports.push_back({path, alias});
+}
+
 void Parser::parseNamespace(Program& program)
 {
     expect(TokenType::NamespaceKeyword);
     if (current().type != TokenType::Identifier) throw std::runtime_error("Expected namespace name");
     const std::string localName = consume().text;
     const std::string previousNamespace = currentNamespace_;
+    if (previousNamespace.empty()) program.topLevelNamespaces.push_back(localName);
     expect(TokenType::LeftBrace);
     currentNamespace_ = previousNamespace.empty() ? localName : previousNamespace + "." + localName;
     try {
@@ -233,6 +249,7 @@ Statement Parser::parseStatement()
         Statement statement;
         statement.type = Statement::Type::ExpressionStatement;
         statement.expression = parseExpression();
+        if (current().type == TokenType::Semicolon) consume();
         return statement;
     }
 
