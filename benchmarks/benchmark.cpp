@@ -30,6 +30,7 @@ void measure(const std::string& name, std::size_t operations, F&& fn)
 {
     std::vector<double> times;
     std::vector<double> allocations, bytes;
+    fn(); // Warm caches and retained interpreter storage before sampling.
     for (int sample = 0; sample < 7; ++sample) {
         std::size_t count = 0, allocated = 0;
         const auto start = std::chrono::steady_clock::now();
@@ -193,11 +194,11 @@ std::string integerProgram(const std::string& type)
     return "func main() { value: " + type + " = 1\nfor i := 0; i < 10000; i++ { value += i * 3 }\n}";
 }
 
-std::string manyVariablesProgram()
+std::string manyVariablesProgram(int count = 200)
 {
     std::string source = "func main() {\n";
-    for (int i = 0; i < 200; ++i) source += "value" + std::to_string(i) + ": int = " + std::to_string(i) + "\n";
-    for (int i = 0; i < 200; ++i) source += "value" + std::to_string(i) + " += 1\n";
+    for (int i = 0; i < count; ++i) source += "value" + std::to_string(i) + ": int = " + std::to_string(i) + "\n";
+    for (int i = 0; i < count; ++i) source += "value" + std::to_string(i) + " += 1\n";
     return source + "}\n";
 }
 
@@ -272,8 +273,11 @@ int runBenchmarks()
     runWorkload("int64 arithmetic (10000 iterations)", integerProgram("int64"), 3);
     runWorkload("int128 arithmetic (10000 iterations)", integerProgram("int128"), 3);
     runWorkload("many variables and expressions (200 locals)", manyVariablesProgram(), 10);
-    const Program analysisProgram = parseSource(manyVariablesProgram());
-    measure("semantic analysis only (200 locals)", 100, [&] { for (int i = 0; i < 100; ++i) (void)validateProgram(analysisProgram); });
+    for (const int count : {10, 50, 100, 200, 500, 1000}) {
+        const Program analysisProgram = parseSource(manyVariablesProgram(count));
+        measure("semantic analysis only (" + std::to_string(count) + " locals)", 100,
+            [&] { for (int i = 0; i < 100; ++i) (void)validateProgram(analysisProgram); });
+    }
 
     runWorkload("array reads (2048 items x 100 reads)", arrayWorkload(R"(for i := 0; i < 100; i++ { copy := values })"), 3);
     runWorkload("array element access (2048 items x 1000 accesses)", arrayWorkload(R"(total := 0

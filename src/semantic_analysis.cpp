@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -10,7 +11,7 @@ namespace rift {
 
 namespace {
 struct TypeInfo { std::string type; bool isConst = false; std::size_t slot = 0; };
-using Types = std::vector<std::unordered_map<std::string, TypeInfo>>;
+using Types = std::vector<std::unordered_map<std::string_view, TypeInfo>>;
 using Functions = std::unordered_map<std::string, std::vector<const Function*>>;
 struct LoopInfo { std::string name; bool supportsRestartSkip = true; };
 using LoopStack = std::vector<LoopInfo>;
@@ -385,6 +386,10 @@ bool returnsOnAllPaths(const std::vector<Statement>& statements)
 
 void checkStatements(const std::vector<Statement>& statements, Types& scopes, const Functions& functions, const Program& program, const std::string& returnType, LoopStack& loopStack, std::size_t& nextSlot)
 {
+    std::size_t declarations = 0;
+    for (const auto& statement : statements)
+        if (statement.type == Statement::Type::VariableDeclaration) declarations += statement.variable->names.size();
+    scopes.back().reserve(scopes.back().size() + declarations);
     for (const auto& s : statements) {
         if (s.type == Statement::Type::VariableDeclaration) {
             const auto& d = *s.variable;
