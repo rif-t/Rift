@@ -18,5 +18,7 @@ func main() {
 
 Nested functions use dot qualification, such as `graphics.color.rgb(...)`.
 With `using graphics.color`, its functions may be called by their short names.
+With `using graphics`, nested namespaces can omit the parent prefix, as in
+`color.rgb(...)`.
 If multiple imported namespaces provide the same short function name, qualify
 the call to resolve the ambiguity.

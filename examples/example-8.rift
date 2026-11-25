@@ -4,9 +4,10 @@ Author: rif-t 24.11.2026 22:42 GMT+2:00
 */
 
 import "library/example-lib.rift"
+using test
 
 func main(){
-    test.yo();
-    test.nested.yo();
+    yo();
+    nested.yo();
     extra.yo();
 }

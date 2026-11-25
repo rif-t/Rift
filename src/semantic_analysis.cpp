@@ -63,18 +63,16 @@ std::string promotedNumericType(const std::string& left, const std::string& righ
 std::vector<const Function*> resolve(const std::string& name, const Functions& functions, const Program& program)
 {
     if (auto it = functions.find(name); it != functions.end()) return it->second;
-    if (name.find('.') == std::string::npos) {
-        std::vector<const Function*> result;
-        for (const auto& ns : program.usingNamespaces) {
-            if (ns == "std") continue;
-            if (auto it = functions.find(ns + "." + name); it != functions.end()) {
-                if (!result.empty()) throw std::runtime_error("Ambiguous function '" + name + "'; qualify it with its namespace");
-                result = it->second;
-            }
+    std::vector<const Function*> result;
+    for (const auto& ns : program.usingNamespaces) {
+        if (ns == "std") continue;
+        const std::string qualifiedName = ns + "." + name;
+        if (auto it = functions.find(qualifiedName); it != functions.end()) {
+            if (!result.empty()) throw std::runtime_error("Ambiguous function '" + name + "'; qualify it with its namespace");
+            result = it->second;
         }
-        return result;
     }
-    return {};
+    return result;
 }
 
 const Function* selectOverload(const std::string& name, const std::vector<const Function*>& candidates,
