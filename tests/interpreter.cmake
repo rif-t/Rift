@@ -49,6 +49,20 @@ func main() {
 }
 ]=] 0 "[[1, 2], [3, 4]]\n[[8, 2], [3, 4]]\n[[1, 90], [6, 4], [7]]\n")
 
+run_rift_case(array_argument_keeps_value_semantics [=[using std
+func edit(values: int[][]) {
+    values[0][0] = 99
+}
+func relay(values: int[][]) {
+    edit(values)
+}
+func main() {
+    original: int[][] = [[1, 2], [3, 4]]
+    relay(original)
+    println(original)
+}
+]=] 0 "[[1, 2], [3, 4]]\n")
+
 run_rift_case(arrays_copy_on_write_deep_detach [=[using std
 func main() {
     values: int[][][][] = [[[[1]]]]

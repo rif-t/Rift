@@ -100,6 +100,11 @@ std::string emptyProgram()
     return "func main() {}\n";
 }
 
+std::string emptyCallProgram()
+{
+    return "func noop() {}\nfunc main() { noop() }\n";
+}
+
 std::string callProgram()
 {
     return R"(func work(n: int) -> int {
@@ -202,9 +207,9 @@ std::string manyVariablesProgram(int count = 200)
     return source + "}\n";
 }
 
-std::string arrayWorkload(const std::string& body)
+std::string arrayWorkload(const std::string& body, const std::string& consumeBody = "item := values[0]")
 {
-    std::string source = "func consume(values: int[]) { item := values[0] }\nfunc main() {\nvalues := [";
+    std::string source = "func consume(values: int[]) { " + consumeBody + " }\nfunc main() {\nvalues := [";
     for (int i = 0; i < 2048; ++i) source += (i ? "," : "") + std::to_string(i);
     source += "]\n" + body + "\n}\n";
     return source;
@@ -259,6 +264,8 @@ int runBenchmarks()
         measure(label, runs, [&] { for (std::size_t i = 0; i < runs; ++i) interpreter.run(program); });
     };
     runWorkload("no-op interpreter run", emptyProgram(), 150);
+    runWorkload("empty function calls (100 calls)", "func noop() {}\nfunc main() { for i := 0; i < 100; i++ { noop() } }\n", 5);
+    runWorkload("minimal arithmetic execution", "func main() { value := 1 + 2 }\n", 100);
     runWorkload("arithmetic plus recursion (250 frames)", arithmeticProgram(), 150);
     runWorkload("function calls (300 frames)", callProgram(), 150);
     runWorkload("shallow function calls (1000 calls)", shallowCallProgram(), 5);
@@ -288,6 +295,18 @@ copy := values
 copy[0] = i
 })"), 3);
     runWorkload("array function arguments (2048 items x 100 calls)", arrayWorkload(R"(for i := 0; i < 100; i++ { consume(values) })"), 3);
+    runWorkload("array arguments without use (100 calls)", arrayWorkload(R"(for i := 0; i < 100; i++ { consume(values) })", ""), 3);
+    runWorkload("array arguments with mutation (100 calls)", arrayWorkload(R"(for i := 0; i < 100; i++ { consume(values) })", "values[0] = 9"), 3);
+    runWorkload("nested array arguments (100 calls)", R"(func consume(values: int[][]) { item := values[0][0] }
+func main() {
+values: int[][] = [[1, 2], [3, 4]]
+for i := 0; i < 100; i++ { consume(values) }
+})", 3);
+    runWorkload("array arguments returned (100 calls)", R"(func identity(values: int[]) -> int[] { return values }
+func main() {
+values := [1, 2, 3]
+for i := 0; i < 100; i++ { copy := identity(values) }
+})", 3);
     runWorkload("array append (1000 elements)", R"(func main() { values: int[] = []
 for i := 0; i < 1000; i++ { values.append(i) } })", 3);
     runWorkload("nested array reads and copies", R"(func main() { values: int[][] = [[1, 2], [3, 4], [5, 6]]

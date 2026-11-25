@@ -59,7 +59,7 @@ void Interpreter::run(const Program& program)
     callFunction("main", {}, &*main);
 }
 
-RuntimeValue Interpreter::callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments, const Function* selected)
+RuntimeValue Interpreter::callFunction(const std::string& name, std::vector<RuntimeValue> arguments, const Function* selected)
 {
     if (!selected) throw std::runtime_error("Undefined function: " + name);
     const Function& function = *selected;
@@ -74,7 +74,7 @@ RuntimeValue Interpreter::callFunction(const std::string& name, const std::vecto
     try {
         for (std::size_t i = 0; i < arguments.size(); ++i) {
             const auto& [parameterName, parameterType] = function.parameters[i];
-            frame.locals[i] = {validateValue(arguments[i], parameterType, parameterName), parameterType, false};
+            frame.locals[i] = {validateValue(std::move(arguments[i]), parameterType, parameterName), parameterType, false};
         }
         executeStatements(function.statements);
         RuntimeValue result = std::monostate{};
