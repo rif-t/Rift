@@ -137,6 +137,50 @@ std::string nestedExpressionProgram()
     return "func main() { value: int = " + expression + " }\n";
 }
 
+std::string localAccessProgram()
+{
+    return R"(func main() {
+value: int = 0
+for i := 0; i < 10000; i++ { value += i }
+})";
+}
+
+std::string shadowingProgram()
+{
+    return R"(func main() {
+value: int = 1
+if true { value: int = 2
+if true { value: int = 3
+if true { value: int = 4 } } }
+})";
+}
+
+std::string controlFlowProgram()
+{
+    return R"(func work(n: int) -> int {
+total: int = 0
+for i := 0; i < n; i++ {
+if i % 2 == 0 { loop.continue }
+total += i
+}
+return total
+}
+func main() { work(1000) })";
+}
+
+std::string integerProgram(const std::string& type)
+{
+    return "func main() { value: " + type + " = 1\nfor i := 0; i < 10000; i++ { value += i * 3 }\n}";
+}
+
+std::string manyVariablesProgram()
+{
+    std::string source = "func main() {\n";
+    for (int i = 0; i < 200; ++i) source += "value" + std::to_string(i) + ": int = " + std::to_string(i) + "\n";
+    for (int i = 0; i < 200; ++i) source += "value" + std::to_string(i) + " += 1\n";
+    return source + "}\n";
+}
+
 std::string arrayWorkload(const std::string& body)
 {
     std::string source = "func consume(values: int[]) { item := values[0] }\nfunc main() {\nvalues := [";
@@ -199,6 +243,15 @@ int runBenchmarks()
     runWorkload("scope and variable lookup (250 frames)", lookupProgram(), 150);
     runWorkload("string concatenation (150 steps)", stringProgram(), 100);
     runWorkload("nested expressions (100 levels)", nestedExpressionProgram(), 300);
+    runWorkload("local reads and writes (10000 iterations)", localAccessProgram(), 3);
+    runWorkload("nested shadowed scopes", shadowingProgram(), 100);
+    runWorkload("loop control and returns (1000 iterations)", controlFlowProgram(), 5);
+    runWorkload("int32 arithmetic (10000 iterations)", integerProgram("int32"), 3);
+    runWorkload("int64 arithmetic (10000 iterations)", integerProgram("int64"), 3);
+    runWorkload("int128 arithmetic (10000 iterations)", integerProgram("int128"), 3);
+    runWorkload("many variables and expressions (200 locals)", manyVariablesProgram(), 10);
+    const Program analysisProgram = parseSource(manyVariablesProgram());
+    measure("semantic analysis only (200 locals)", 100, [&] { for (int i = 0; i < 100; ++i) (void)validateProgram(analysisProgram); });
 
     runWorkload("array reads (2048 items x 100 reads)", arrayWorkload(R"(for i := 0; i < 100; i++ { copy := values })"), 3);
     runWorkload("array element access (2048 items x 1000 accesses)", arrayWorkload(R"(total := 0
