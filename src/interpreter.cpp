@@ -85,27 +85,23 @@ RuntimeValue Interpreter::callFunction(const std::string& name, const std::vecto
             locals_[i] = {validateValue(arguments[i], parameterType, parameterName), parameterType, false};
         }
         executeStatements(function.statements);
-        if (!function.returnType.empty() && function.returnType != "void") {
-            throw std::runtime_error("Function '" + name + "' completed without returning a value");
-        }
-        locals_ = std::move(previousLocals);
-        return std::monostate{};
-    } catch (const ReturnSignal& signal) {
         RuntimeValue result = std::monostate{};
-        try {
+        if (flow_.type == ExecutionFlow::Type::Return) {
+            auto signal = std::move(flow_);
+            flow_ = {};
             if (function.returnType.empty() || function.returnType == "void") {
-                if (signal.value) throw std::runtime_error("Void function '" + name + "' cannot return a value");
+                if (signal.returnValue) throw std::runtime_error("Void function '" + name + "' cannot return a value");
             } else {
-                if (!signal.value) throw std::runtime_error("Function '" + name + "' must return a value of type " + function.returnType);
-                result = validateValue(*signal.value, function.returnType, "return value");
+                if (!signal.returnValue) throw std::runtime_error("Function '" + name + "' must return a value of type " + function.returnType);
+                result = validateValue(*signal.returnValue, function.returnType, "return value");
             }
-        } catch (...) {
-            locals_ = std::move(previousLocals);
-            throw;
+        } else if (!function.returnType.empty() && function.returnType != "void") {
+            throw std::runtime_error("Function '" + name + "' completed without returning a value");
         }
         locals_ = std::move(previousLocals);
         return result;
     } catch (...) {
+        flow_ = {};
         locals_ = std::move(previousLocals);
         throw;
     }
@@ -113,6 +109,7 @@ RuntimeValue Interpreter::callFunction(const std::string& name, const std::vecto
 
 void Interpreter::executeStatements(const std::vector<Statement>& statements, bool clearSlots)
 {
+    if (flow_.type != ExecutionFlow::Type::Normal) return;
     const auto scope = analysis_->scopeSlots.find(&statements);
     SlotClearGuard slotCleanup{locals_, !clearSlots || scope == analysis_->scopeSlots.end() ? nullptr : &scope->second};
     for (const auto& statement : statements) {
@@ -124,6 +121,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
                 std::string type = declaration.type;
                 if (!declaration.values.empty()) {
                     RuntimeValue evaluated = evaluate(*declaration.values[i]);
+                    if (flow_.type != ExecutionFlow::Type::Normal) return;
                     if (type == "auto") type = inferType(evaluated);
                     value = validateValue(std::move(evaluated), type, name);
                 }
@@ -133,7 +131,9 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
         } else if (statement.type == Statement::Type::Assignment) {
             if (statement.name.ends_with(".limit")) {
                 const std::string target = statement.name.substr(0, statement.name.size() - 6);
-                const std::uint64_t value = loopCount(evaluate(*statement.expression), "Loop limit");
+                RuntimeValue evaluated = evaluate(*statement.expression);
+                if (flow_.type != ExecutionFlow::Type::Normal) return;
+                const std::uint64_t value = loopCount(evaluated, "Loop limit");
                 auto state = loopStates_.rbegin();
                 if (target == "loop") {
                     if (state == loopStates_.rend()) throw std::runtime_error("No active loop for 'loop.limit'");
@@ -151,11 +151,15 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
                 if (!array || !*array) throw std::runtime_error("Cannot index a non-array value");
                 for (std::size_t i = 0; i < statement.indices.size(); ++i) {
                     ensureUniqueArray(*array);
-                    const auto index = loopCount(evaluate(*statement.indices[i]), "Array index");
+                    RuntimeValue indexValue = evaluate(*statement.indices[i]);
+                    if (flow_.type != ExecutionFlow::Type::Normal) return;
+                    const auto index = loopCount(indexValue, "Array index");
                     if (index >= (*array)->elements.size()) throw std::runtime_error("Array index out of range");
                     auto& element = (*array)->elements[static_cast<std::size_t>(index)];
-                    if (i + 1 == statement.indices.size()) {
-                        element = validateValue(evaluate(*statement.expression), (*array)->elementType, "array element");
+                if (i + 1 == statement.indices.size()) {
+                        RuntimeValue assigned = evaluate(*statement.expression);
+                        if (flow_.type != ExecutionFlow::Type::Normal) return;
+                        element = validateValue(std::move(assigned), (*array)->elementType, "array element");
                     } else {
                         array = std::get_if<std::shared_ptr<RuntimeArray>>(&element);
                         if (!array || !*array) throw std::runtime_error("Cannot index a non-array value");
@@ -166,6 +170,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
             RuntimeValue value;
             if (statement.operation == "=") {
                 value = evaluate(*statement.expression);
+                if (flow_.type != ExecutionFlow::Type::Normal) return;
             } else {
                 RuntimeValue currentValue = variable.value;
                 if (std::holds_alternative<std::monostate>(currentValue)) throw std::runtime_error("Compound assignment to uninitialized variable: " + statement.name);
@@ -173,6 +178,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
                 RuntimeValue right;
                 if (statement.expression) {
                     right = evaluate(*statement.expression);
+                    if (flow_.type != ExecutionFlow::Type::Normal) return;
                 } else {
                     right = WideInteger{UInt128{0, 1}, false, false};
                 }
@@ -191,7 +197,10 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
         } else if (statement.type == Statement::Type::Print) {
             std::vector<RuntimeValue> values;
             values.reserve(statement.arguments.size());
-            for (const auto& argument : statement.arguments) values.push_back(evaluate(*argument));
+            for (const auto& argument : statement.arguments) {
+                values.push_back(evaluate(*argument));
+                if (flow_.type != ExecutionFlow::Type::Normal) return;
+            }
             std::string output;
             if (!values.empty() && std::holds_alternative<std::u16string>(values.front())) {
                 std::vector<rift::fmt::Argument> formatArguments;
@@ -205,7 +214,9 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
         } else if (statement.type == Statement::Type::If) {
             bool matched = false;
             for (const auto& branch : statement.branches) {
-                if (requireBoolean(evaluate(*branch.condition), "if condition")) {
+                RuntimeValue condition = evaluate(*branch.condition);
+                if (flow_.type != ExecutionFlow::Type::Normal) return;
+                if (requireBoolean(condition, "if condition")) {
                     executeStatements(branch.statements);
                     matched = true;
                     break;
@@ -219,6 +230,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
             const auto loopSlots = analysis_->loopScopeSlots.find(&statement);
             SlotClearGuard loopScopeCleanup{locals_, loopSlots == analysis_->loopScopeSlots.end() ? nullptr : &loopSlots->second};
             if (isForLoop) executeStatements(statement.initializer, false);
+            if (flow_.type != ExecutionFlow::Type::Normal) return;
             bool runElse = true;
             {
                 LoopState initialState;
@@ -227,34 +239,61 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
                 loopStates_.push_back(std::move(initialState));
                 ScopePopGuard loopStateGuard{loopStates_};
                 bool completedNormally = false;
+                bool shouldBreak = false;
+                bool shouldRestart = false;
+                const auto handleLoopFlow = [&]() {
+                    if (flow_.type == ExecutionFlow::Type::Normal) return true;
+                    if (flow_.type == ExecutionFlow::Type::Return) return false;
+                    const std::string& currentName = loopStates_.back().name;
+                    if (!flow_.target.empty() && flow_.target != currentName) return false;
+                    if (flow_.type == ExecutionFlow::Type::Break) shouldBreak = true;
+                    else if (flow_.type == ExecutionFlow::Type::Restart) shouldRestart = true;
+                    flow_ = {};
+                    return true;
+                };
                 while (true) {
-                    if (statement.expression && !requireBoolean(evaluate(*statement.expression), isForLoop ? "for-loop condition" : "while condition")) {
-                        completedNormally = true;
-                        break;
+                    if (statement.expression) {
+                        RuntimeValue condition = evaluate(*statement.expression);
+                        if (flow_.type != ExecutionFlow::Type::Normal) {
+                            const auto conditionFlow = flow_.type;
+                            if (!handleLoopFlow()) { completedNormally = false; break; }
+                            if (shouldBreak) { completedNormally = false; break; }
+                            if (shouldRestart) {
+                                loopStates_.back().iterations = 0;
+                                loopStates_.back().limit.reset();
+                                shouldRestart = false;
+                                runElse = false;
+                                continue;
+                            }
+                            if (conditionFlow == ExecutionFlow::Type::Continue) {
+                                if (isForLoop) executeStatements(statement.post, false);
+                                if (flow_.type != ExecutionFlow::Type::Normal && !handleLoopFlow()) { completedNormally = false; break; }
+                                if (shouldBreak) { completedNormally = false; break; }
+                                if (shouldRestart) {
+                                    loopStates_.back().iterations = 0;
+                                    loopStates_.back().limit.reset();
+                                    shouldRestart = false;
+                                    runElse = false;
+                                }
+                                continue;
+                            }
+                        }
+                        if (!requireBoolean(condition, isForLoop ? "for-loop condition" : "while condition")) {
+                            completedNormally = true;
+                            break;
+                        }
                     }
                     auto& state = loopStates_.back();
                     if (state.limit && state.iterations >= *state.limit) {
                         completedNormally = true;
                         break;
                     }
-                    bool shouldBreak = false;
-                    bool shouldRestart = false;
-                    const auto handleLoopSignal = [&](const LoopControlSignal& signal) {
-                        const std::string& currentName = loopStates_.back().name;
-                        if (!signal.target.empty() && signal.target != currentName) return false;
-                        if (signal.action == LoopAction::Break) shouldBreak = true;
-                        else if (signal.action == LoopAction::Restart) shouldRestart = true;
-                        return true;
-                    };
+                    shouldBreak = false;
+                    shouldRestart = false;
                     if (state.skipsRemaining > 0) {
                         --state.skipsRemaining;
-                        if (isForLoop) {
-                            try {
-                                executeStatements(statement.post, false);
-                            } catch (const LoopControlSignal& signal) {
-                                if (!handleLoopSignal(signal)) throw;
-                            }
-                        }
+                        if (isForLoop) executeStatements(statement.post, false);
+                        if (!handleLoopFlow()) { completedNormally = false; break; }
                         if (shouldBreak) { completedNormally = false; break; }
                         if (shouldRestart) {
                             loopStates_.back().iterations = 0;
@@ -265,13 +304,8 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
                     }
                     if (state.iterations == std::numeric_limits<std::uint64_t>::max()) throw std::runtime_error("Loop iteration counter overflow");
                     ++state.iterations;
-                    {
-                        try {
-                            executeStatements(statement.loopStatements);
-                        } catch (const LoopControlSignal& signal) {
-                            if (!handleLoopSignal(signal)) throw;
-                        }
-                    }
+                    executeStatements(statement.loopStatements);
+                    if (!handleLoopFlow()) { completedNormally = false; break; }
                     if (shouldBreak) { completedNormally = false; break; }
                     if (shouldRestart) {
                         loopStates_.back().iterations = 0;
@@ -280,11 +314,8 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
                         continue;
                     }
                     if (isForLoop) {
-                        try {
-                            executeStatements(statement.post, false);
-                        } catch (const LoopControlSignal& signal) {
-                            if (!handleLoopSignal(signal)) throw;
-                        }
+                        executeStatements(statement.post, false);
+                        if (!handleLoopFlow()) { completedNormally = false; break; }
                         if (shouldBreak) { completedNormally = false; break; }
                         if (shouldRestart) {
                             loopStates_.back().iterations = 0;
@@ -300,14 +331,19 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
                 executeStatements(statement.loopElseStatements);
             }
         } else if (statement.type == Statement::Type::Break) {
-            throw LoopControlSignal{statement.name, LoopAction::Break};
+            flow_.type = ExecutionFlow::Type::Break;
+            flow_.target = statement.name;
         } else if (statement.type == Statement::Type::Return) {
-            ReturnSignal signal;
-            if (statement.expression) signal.value = evaluate(*statement.expression);
-            throw signal;
+            if (statement.expression) {
+                RuntimeValue value = evaluate(*statement.expression);
+                if (flow_.type != ExecutionFlow::Type::Normal) return;
+                flow_.returnValue = std::move(value);
+            }
+            flow_.type = ExecutionFlow::Type::Return;
         } else if (statement.type == Statement::Type::ExpressionStatement) {
             evaluate(*statement.expression);
         }
+        if (flow_.type != ExecutionFlow::Type::Normal) return;
     }
 }
 

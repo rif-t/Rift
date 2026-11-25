@@ -122,8 +122,10 @@ RuntimeValue typeBuiltin(const std::string& name, const std::vector<RuntimeValue
 
 RuntimeValue Interpreter::evaluate(const Expression& expression)
 {
+    if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
     try {
-        return evaluateImpl(expression);
+        RuntimeValue value = evaluateImpl(expression);
+        return flow_.type == ExecutionFlow::Type::Normal ? std::move(value) : RuntimeValue{std::monostate{}};
     } catch (const std::runtime_error& error) {
         const std::string message = error.what();
         if (message.starts_with("at line ")) throw;
@@ -152,6 +154,7 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
         if (type.ends_with("[]")) array->elementType = type.substr(0, type.size() - 2);
         for (const auto& item : expression.arguments) {
             RuntimeValue value = evaluate(*item);
+            if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
             if (array->elementType.empty()) array->elementType = valueType(value);
             value = validateValue(std::move(value), array->elementType, "array element");
             array->elements.push_back(std::move(value));
@@ -176,11 +179,13 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
                 return WideInteger{UInt128{0, *state->limit}, false, true, 64};
             }
             const std::string signalTarget = target == "loop" ? "" : target;
-            if (member == "break") throw LoopControlSignal{signalTarget, LoopAction::Break};
-            if (member == "continue") throw LoopControlSignal{signalTarget, LoopAction::Continue};
+            if (member == "break") { flow_.type = ExecutionFlow::Type::Break; flow_.target = signalTarget; return std::monostate{}; }
+            if (member == "continue") { flow_.type = ExecutionFlow::Type::Continue; flow_.target = signalTarget; return std::monostate{}; }
             if (member == "restart") {
                 if (!state->supportsRestartSkip) throw std::runtime_error("restart is only available for for loops");
-                throw LoopControlSignal{signalTarget, LoopAction::Restart};
+                flow_.type = ExecutionFlow::Type::Restart;
+                flow_.target = signalTarget;
+                return std::monostate{};
             }
         }
         const auto slot = analysis_->expressions.at(&expression).localSlot;
@@ -190,10 +195,13 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
     }
     case Expression::Type::Index: {
         RuntimeValue value = evaluate(*expression.left);
+        if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
         for (const auto& indexExpression : expression.indices) {
             auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&value);
             if (!array || !*array) throw std::runtime_error("Cannot index a non-array value");
-            const auto index = loopCount(evaluate(*indexExpression), "Array index");
+            RuntimeValue indexValue = evaluate(*indexExpression);
+            if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
+            const auto index = loopCount(indexValue, "Array index");
             if (index >= (*array)->elements.size()) throw std::runtime_error("Array index out of range");
             value = cloneValue((*array)->elements[static_cast<std::size_t>(index)]);
         }
@@ -202,6 +210,7 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
     case Expression::Type::Member: {
         if (expression.name == "length") {
             RuntimeValue receiver = evaluate(*expression.left);
+            if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
             const auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&receiver);
             if (!array || !*array) throw std::runtime_error("length requires an array");
             return WideInteger{UInt128{0, (*array)->elements.size()}, false, false};
@@ -223,17 +232,20 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
                 return WideInteger{UInt128{0, *state->limit}, false, true, 64};
             }
             const std::string signalTarget = target == "loop" ? "" : target;
-            if (member == "break") throw LoopControlSignal{signalTarget, LoopAction::Break};
-            if (member == "continue") throw LoopControlSignal{signalTarget, LoopAction::Continue};
+            if (member == "break") { flow_.type = ExecutionFlow::Type::Break; flow_.target = signalTarget; return std::monostate{}; }
+            if (member == "continue") { flow_.type = ExecutionFlow::Type::Continue; flow_.target = signalTarget; return std::monostate{}; }
             if (member == "restart") {
                 if (!state->supportsRestartSkip) throw std::runtime_error("restart is only available for for loops");
-                throw LoopControlSignal{signalTarget, LoopAction::Restart};
+                flow_.type = ExecutionFlow::Type::Restart;
+                flow_.target = signalTarget;
+                return std::monostate{};
             }
         }
         throw std::runtime_error("Unknown array member: " + expression.name);
     }
     case Expression::Type::Unary: {
         RuntimeValue value = evaluate(*expression.left);
+        if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
         if (expression.operation == "!") return !requireBoolean(value, "Logical negation operand");
         if (std::holds_alternative<float>(value)) return -std::get<float>(value);
         if (std::holds_alternative<double>(value)) return -std::get<double>(value);
@@ -245,17 +257,23 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
     }
     case Expression::Type::Binary: {
         RuntimeValue l = evaluate(*expression.left);
+        if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
         if (expression.operation == "&&") {
             const bool leftBool = requireBoolean(l, "Logical AND operand");
             if (!leftBool) return false;
-            return requireBoolean(evaluate(*expression.right), "Logical AND operand");
+            RuntimeValue right = evaluate(*expression.right);
+            if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
+            return requireBoolean(right, "Logical AND operand");
         }
         if (expression.operation == "||") {
             const bool leftBool = requireBoolean(l, "Logical OR operand");
             if (leftBool) return true;
-            return requireBoolean(evaluate(*expression.right), "Logical OR operand");
+            RuntimeValue right = evaluate(*expression.right);
+            if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
+            return requireBoolean(right, "Logical OR operand");
         }
         RuntimeValue r = evaluate(*expression.right);
+        if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
         if (expression.operation == "==" || expression.operation == "!=" || expression.operation == "<" ||
             expression.operation == "<=" || expression.operation == ">" || expression.operation == ">=") {
             return compareValues(l, r, expression.operation);
@@ -272,8 +290,11 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
         return applyNumericArithmetic(expression.operation, l, r);
     }
     case Expression::Type::Conditional: {
-        const bool condition = requireBoolean(evaluate(*expression.left), "Conditional expression condition");
+        RuntimeValue conditionValue = evaluate(*expression.left);
+        if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
+        const bool condition = requireBoolean(conditionValue, "Conditional expression condition");
         RuntimeValue result = evaluate(condition ? *expression.right : *expression.third);
+        if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
         const std::string& type = analysis_->expressions.at(&expression).resolvedType;
         if (type == "float" || type == "double" || type == "decimal" || type == "int" || type.starts_with("int") || type.starts_with("uint"))
             return validateValue(std::move(result), type, "conditional expression");
@@ -296,6 +317,7 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
             }
             if (!array || !*array) throw std::runtime_error("append receiver must be an array");
             RuntimeValue item = evaluate(*expression.arguments.front());
+            if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
             if ((*array)->elementType.empty()) (*array)->elementType = valueType(item);
             item = validateValue(std::move(item), (*array)->elementType, "array element");
             ensureUniqueArray(*array);
@@ -307,6 +329,7 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
             const std::string target = expression.name.substr(0, expression.name.rfind('.'));
             if (expression.arguments.size() != 1) throw std::runtime_error("Loop control expects exactly one argument");
             RuntimeValue argument = evaluate(*expression.arguments.front());
+            if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
             auto state = loopStates_.rbegin();
             if (target == "loop") {
                 if (state == loopStates_.rend()) throw std::runtime_error("No active loop for 'loop' control");
@@ -321,7 +344,11 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
                 state->skipsRemaining += count;
                 return std::monostate{};
             }
-            if (requireBoolean(argument, "loop.break_if argument")) throw LoopControlSignal{target == "loop" ? "" : target, LoopAction::Break};
+            if (requireBoolean(argument, "loop.break_if argument")) {
+                flow_.type = ExecutionFlow::Type::Break;
+                flow_.target = target == "loop" ? "" : target;
+                return std::monostate{};
+            }
             return std::monostate{};
         }
         std::string builtinName;
@@ -363,7 +390,10 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
                 }
                 if (!foundVariable) arguments.push_back(evaluate(*expression.arguments[0]));
             } else {
-                for (const auto& argument : expression.arguments) arguments.push_back(evaluate(*argument));
+                for (const auto& argument : expression.arguments) {
+                    arguments.push_back(evaluate(*argument));
+                    if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
+                }
             }
             if ((builtinName == "type_of" || builtinName == "typeof") && inspectVariableType && !arguments.empty() &&
                 std::holds_alternative<std::string>(arguments[0])) return arguments[0];
@@ -372,7 +402,10 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
         }
         std::vector<RuntimeValue> arguments;
         arguments.reserve(expression.arguments.size());
-        for (const auto& argument : expression.arguments) arguments.push_back(evaluate(*argument));
+        for (const auto& argument : expression.arguments) {
+            arguments.push_back(evaluate(*argument));
+            if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
+        }
         return callFunction(expression.name, arguments, analysis_->expressions.at(&expression).resolvedFunction);
     }
     }

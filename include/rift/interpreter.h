@@ -31,11 +31,17 @@ private:
         std::uint64_t skipsRemaining = 0;
         bool supportsRestartSkip = true;
     };
+    struct ExecutionFlow {
+        enum class Type { Normal, Return, Break, Continue, Restart } type = Type::Normal;
+        std::string target;
+        std::optional<RuntimeValue> returnValue;
+    };
     std::vector<Variable> locals_;
     std::unordered_map<std::string, std::vector<const Function*>> functions_;
     std::vector<std::string> usingNamespaces_;
     std::vector<LoopState> loopStates_;
     const AnalysisResult* analysis_ = nullptr;
+    ExecutionFlow flow_;
 };
 
 }
