@@ -36,12 +36,19 @@ private:
         std::string target;
         std::optional<RuntimeValue> returnValue;
     };
-    std::vector<Variable> locals_;
+    struct CallFrame { std::vector<Variable> locals; };
+    struct CallFrameGuard {
+        Interpreter& interpreter;
+        ~CallFrameGuard() { interpreter.callFrames_[--interpreter.callDepth_]->locals.clear(); }
+    };
+    std::vector<std::unique_ptr<CallFrame>> callFrames_;
+    std::size_t callDepth_ = 0;
     std::unordered_map<std::string, std::vector<const Function*>> functions_;
     std::vector<std::string> usingNamespaces_;
     std::vector<LoopState> loopStates_;
     const AnalysisResult* analysis_ = nullptr;
     ExecutionFlow flow_;
+    std::vector<Variable>& locals() { return callFrames_[callDepth_ - 1]->locals; }
 };
 
 }

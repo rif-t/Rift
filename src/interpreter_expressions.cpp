@@ -190,8 +190,8 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
         }
         const auto slot = analysis_->expressions.at(&expression).localSlot;
         if (slot == static_cast<std::size_t>(-1)) throw std::runtime_error("Undefined variable: " + expression.name);
-        if (std::holds_alternative<std::monostate>(locals_[slot].value)) throw std::runtime_error("Variable used before initialization: " + expression.name);
-        return cloneValue(locals_[slot].value);
+        if (std::holds_alternative<std::monostate>(locals()[slot].value)) throw std::runtime_error("Variable used before initialization: " + expression.name);
+        return cloneValue(locals()[slot].value);
     }
     case Expression::Type::Index: {
         RuntimeValue value = evaluate(*expression.left);
@@ -306,7 +306,7 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
                 throw std::runtime_error("append expects one array variable and one value");
             const auto slot = analysis_->expressions.at(expression.left.get()).localSlot;
             if (slot == static_cast<std::size_t>(-1)) throw std::runtime_error("Undefined array: " + expression.left->name);
-            auto& variable = locals_[slot];
+            auto& variable = locals()[slot];
             if (variable.isConst) throw std::runtime_error("Cannot mutate const array: " + expression.left->name);
             auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&variable.value);
             if ((!array || !*array) && std::holds_alternative<std::monostate>(variable.value) && variable.type.ends_with("[]")) {
@@ -381,7 +381,7 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
                 bool foundVariable = false;
                 const auto slot = analysis_->expressions.at(expression.arguments[0].get()).localSlot;
                 if (slot != static_cast<std::size_t>(-1)) {
-                    const auto& variable = locals_[slot];
+                    const auto& variable = locals()[slot];
                     if (std::holds_alternative<std::monostate>(variable.value))
                         throw std::runtime_error("Variable used before initialization: " + variableName);
                     if (variable.type == "any") arguments.push_back(variable.value);

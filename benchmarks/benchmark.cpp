@@ -137,6 +137,26 @@ std::string nestedExpressionProgram()
     return "func main() { value: int = " + expression + " }\n";
 }
 
+std::string shallowCallProgram()
+{
+    return R"(func increment(value: int) -> int { return value + 1 }
+func main() {
+total := 0
+for i := 0; i < 1000; i++ { total += increment(i) }
+})";
+}
+
+std::string manyParameterProgram()
+{
+    return R"(func sum(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int) -> int {
+return a + b + c + d + e + f + g + h
+}
+func main() {
+total := 0
+for i := 0; i < 500; i++ { total += sum(i, i, i, i, i, i, i, i) }
+})";
+}
+
 std::string localAccessProgram()
 {
     return R"(func main() {
@@ -240,6 +260,8 @@ int runBenchmarks()
     runWorkload("no-op interpreter run", emptyProgram(), 150);
     runWorkload("arithmetic plus recursion (250 frames)", arithmeticProgram(), 150);
     runWorkload("function calls (300 frames)", callProgram(), 150);
+    runWorkload("shallow function calls (1000 calls)", shallowCallProgram(), 5);
+    runWorkload("function calls with 8 parameters (500 calls)", manyParameterProgram(), 5);
     runWorkload("scope and variable lookup (250 frames)", lookupProgram(), 150);
     runWorkload("string concatenation (150 steps)", stringProgram(), 100);
     runWorkload("nested expressions (100 levels)", nestedExpressionProgram(), 300);

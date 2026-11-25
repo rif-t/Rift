@@ -77,12 +77,14 @@ RuntimeValue Interpreter::callFunction(const std::string& name, const std::vecto
         throw std::runtime_error("Function '" + name + "' expects " + std::to_string(function.parameters.size()) + " argument(s)");
     }
 
-    auto previousLocals = std::move(locals_);
-    locals_.resize(analysis_->functionSlotCounts.at(&function));
+    if (callDepth_ == callFrames_.size()) callFrames_.push_back(std::make_unique<CallFrame>());
+    CallFrame& frame = *callFrames_[callDepth_++];
+    CallFrameGuard frameGuard{*this};
+    frame.locals.resize(analysis_->functionSlotCounts.at(&function));
     try {
         for (std::size_t i = 0; i < arguments.size(); ++i) {
             const auto& [parameterName, parameterType] = function.parameters[i];
-            locals_[i] = {validateValue(arguments[i], parameterType, parameterName), parameterType, false};
+            frame.locals[i] = {validateValue(arguments[i], parameterType, parameterName), parameterType, false};
         }
         executeStatements(function.statements);
         RuntimeValue result = std::monostate{};
@@ -98,11 +100,9 @@ RuntimeValue Interpreter::callFunction(const std::string& name, const std::vecto
         } else if (!function.returnType.empty() && function.returnType != "void") {
             throw std::runtime_error("Function '" + name + "' completed without returning a value");
         }
-        locals_ = std::move(previousLocals);
         return result;
     } catch (...) {
         flow_ = {};
-        locals_ = std::move(previousLocals);
         throw;
     }
 }
@@ -111,7 +111,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
 {
     if (flow_.type != ExecutionFlow::Type::Normal) return;
     const auto scope = analysis_->scopeSlots.find(&statements);
-    SlotClearGuard slotCleanup{locals_, !clearSlots || scope == analysis_->scopeSlots.end() ? nullptr : &scope->second};
+    SlotClearGuard slotCleanup{locals(), !clearSlots || scope == analysis_->scopeSlots.end() ? nullptr : &scope->second};
     for (const auto& statement : statements) {
         if (statement.type == Statement::Type::VariableDeclaration) {
             const auto& declaration = *statement.variable;
@@ -126,7 +126,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
                     value = validateValue(std::move(evaluated), type, name);
                 }
                 const auto slot = analysis_->declarationSlots.at(&declaration) + i;
-                locals_[slot] = {std::move(value), std::move(type), declaration.isConst};
+                locals()[slot] = {std::move(value), std::move(type), declaration.isConst};
             }
         } else if (statement.type == Statement::Type::Assignment) {
             if (statement.name.ends_with(".limit")) {
@@ -144,7 +144,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
                 state->limit = value;
                 continue;
             }
-            auto& variable = locals_[analysis_->assignmentSlots.at(&statement)];
+            auto& variable = locals()[analysis_->assignmentSlots.at(&statement)];
             if (variable.isConst) throw std::runtime_error("Cannot assign to const variable: " + statement.name);
             if (!statement.indices.empty()) {
                 auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&variable.value);
@@ -228,7 +228,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements, bo
         } else if (statement.type == Statement::Type::For || statement.type == Statement::Type::While) {
             const bool isForLoop = statement.type == Statement::Type::For;
             const auto loopSlots = analysis_->loopScopeSlots.find(&statement);
-            SlotClearGuard loopScopeCleanup{locals_, loopSlots == analysis_->loopScopeSlots.end() ? nullptr : &loopSlots->second};
+            SlotClearGuard loopScopeCleanup{locals(), loopSlots == analysis_->loopScopeSlots.end() ? nullptr : &loopSlots->second};
             if (isForLoop) executeStatements(statement.initializer, false);
             if (flow_.type != ExecutionFlow::Type::Normal) return;
             bool runElse = true;
