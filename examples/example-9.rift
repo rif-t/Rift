@@ -21,7 +21,7 @@ func main(){
     array.append('a')
     array.append(3.141)
 
-    for i:=0; i<5; i++{
+    for i:=0; i<array.length; i++{
         print("{} ", array[i])
     }
 }
