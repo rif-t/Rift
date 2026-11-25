@@ -23,17 +23,20 @@ std::string canonicalType(std::string type)
     return type;
 }
 
-bool numeric(const std::string& t) { return t == "any" || t == "int" || t == "float" || t == "double" || t == "decimal" || t.starts_with("int") || t.starts_with("uint"); }
+bool arrayType(const std::string& t) { return t.ends_with("[]"); }
+std::string arrayElementType(const std::string& t) { return t.substr(0, t.size() - 2); }
+bool numeric(const std::string& t) { return !arrayType(t) && (t == "any" || t == "int" || t == "float" || t == "double" || t == "decimal" || t.starts_with("int") || t.starts_with("uint")); }
 bool assignable(const std::string& target, const std::string& source)
 {
     if (target == "any" || target == source || source == "any") return true;
+    if (arrayType(target) && (source == "array" || (arrayType(source) && assignable(arrayElementType(target), arrayElementType(source))))) return true;
     if (numeric(target) && numeric(source)) return true; // Runtime range checks enforce narrowing conversions.
     return false;
 }
 
 bool integerType(const std::string& type)
 {
-    return type == "int" || type.starts_with("int") || type.starts_with("uint");
+    return !arrayType(type) && (type == "int" || type.starts_with("int") || type.starts_with("uint"));
 }
 
 const LoopInfo& requireLoopTarget(const std::string& target, const LoopStack& loopStack)
@@ -140,6 +143,7 @@ std::string resolveTypeBuiltin(const std::string& name, const Program& program)
 
 bool isConcreteStdType(const std::string& type)
 {
+    if (arrayType(type)) return isConcreteStdType(arrayElementType(type));
     static const std::unordered_set<std::string> types = {
         "bool", "char", "string", "int", "int8", "int16", "int32", "int64", "int128",
         "uint8", "uint16", "uint32", "uint64", "uint128", "float", "double", "decimal"
@@ -172,6 +176,8 @@ std::string validateTypeBuiltin(const std::string& name, const std::vector<std::
         requireOne();
         const auto& argument = args[0];
         if (argument == "void") throw std::runtime_error("std.types." + name + " cannot inspect a void value");
+        if ((name == "max_value" || name == "min_value") && arrayType(argument))
+            throw std::runtime_error("std.types." + name + " does not support arrays");
         if (argument == "type") return "int";
         if (argument == "any") return name == "size_of" || name == "sizeof" ? "int" : "any";
         if (name == "size_of" || name == "sizeof") return "int";
@@ -198,6 +204,46 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
     case Expression::Type::Character: return "char";
     case Expression::Type::Boolean: return "bool";
     case Expression::Type::TypeName: return "type";
+    case Expression::Type::Array: {
+        std::string element;
+        for (const auto& item : e.arguments) {
+            const std::string type = expressionType(*item, scopes, functions, program, loopStack);
+            if (type == "void" || type == "type") throw std::runtime_error("Array elements must be values");
+            if (element.empty()) element = type;
+            else if (element == type) {}
+            else if (arrayType(element) && type == "array") {}
+            else if (element == "array" && arrayType(type)) element = type;
+            else if (arrayType(element) && arrayType(type) && assignable(element, type)) {}
+            else if (numeric(element) && numeric(type)) element = promotedNumericType(element, type);
+            else throw std::runtime_error("Array elements must have compatible types, got " + element + " and " + type);
+        }
+        return element.empty() ? "array" : element + "[]";
+    }
+    case Expression::Type::Index: {
+        std::string type = expressionType(*e.left, scopes, functions, program, loopStack);
+        for (const auto& index : e.indices) {
+            const auto indexType = expressionType(*index, scopes, functions, program, loopStack);
+            if (!integerType(indexType) && indexType != "any") throw std::runtime_error("Array index must be an integer");
+            if (type == "any") continue;
+            if (!arrayType(type)) throw std::runtime_error("Cannot index a non-array value");
+            type = arrayElementType(type);
+        }
+        return type;
+    }
+    case Expression::Type::Member: {
+        if (e.left->type == Expression::Type::Identifier &&
+            (e.name == "iteration" || e.name == "limit" || e.name == "break" || e.name == "continue" || e.name == "restart")) {
+            if (e.name == "iteration" || e.name == "limit") { requireLoopTarget(e.left->name, loopStack); return "uint64"; }
+            if (e.name == "break" || e.name == "continue" || e.name == "restart") {
+                const auto& loop = requireLoopTarget(e.left->name, loopStack);
+                if (e.name == "restart" && !loop.supportsRestartSkip) throw std::runtime_error("restart is only available for for loops");
+                return "void";
+            }
+        }
+        const std::string receiver = expressionType(*e.left, scopes, functions, program, loopStack);
+        if (e.name == "length" && (arrayType(receiver) || receiver == "any")) return "int";
+        throw std::runtime_error("Unknown member '" + e.name + "' on " + receiver);
+    }
     case Expression::Type::Identifier:
         if (const auto dot = e.name.rfind('.'); dot != std::string::npos) {
             const std::string target = e.name.substr(0, dot);
@@ -220,7 +266,7 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
         const auto type = expressionType(*e.left, scopes, functions, program, loopStack);
         if (e.operation == "!") { if (type != "bool" && type != "any") throw std::runtime_error("Logical negation requires bool"); return "bool"; }
         if (e.operation == "-" && type.starts_with("uint")) throw std::runtime_error("Unsigned integer values cannot be negated");
-        if (type != "int" && type != "float" && type != "double" && type != "decimal" && !type.starts_with("uint") && !type.starts_with("int"))
+        if (!numeric(type))
             throw std::runtime_error("Unary numeric operator requires a number");
         return type;
     }
@@ -259,6 +305,18 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
     case Expression::Type::Call: {
         std::vector<std::string> argumentTypes;
         for (const auto& arg : e.arguments) argumentTypes.push_back(expressionType(*arg, scopes, functions, program, loopStack));
+        if (e.name == "append") {
+            if (!e.left || e.left->type != Expression::Type::Identifier) throw std::runtime_error("append receiver must be an array variable");
+            const std::string receiver = expressionType(*e.left, scopes, functions, program, loopStack);
+            if (!arrayType(receiver) && receiver != "any") throw std::runtime_error("append receiver must be an array");
+            if (argumentTypes.size() != 1) throw std::runtime_error("append expects one argument");
+            for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope)
+                if (auto it = scope->find(e.left->name); it != scope->end() && it->second.isConst)
+                    throw std::runtime_error("Cannot mutate const array: " + e.left->name);
+            if (arrayType(receiver) && !assignable(arrayElementType(receiver), argumentTypes[0]))
+                throw std::runtime_error("Cannot append " + argumentTypes[0] + " to " + receiver);
+            return "void";
+        }
         if (e.name.ends_with(".skip") || e.name.ends_with(".break_if")) {
             const bool isSkip = e.name.ends_with(".skip");
             const std::string target = e.name.substr(0, e.name.rfind('.'));
@@ -273,7 +331,9 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
         if (!builtin.empty()) {
             if (builtin == "size_of" || builtin == "sizeof" || builtin == "max_value" || builtin == "min_value") {
                 for (std::size_t i = 0; i < e.arguments.size(); ++i) {
-                    if (e.arguments[i]->type == Expression::Type::TypeName && !isConcreteStdType(e.arguments[i]->name))
+                    if (e.arguments[i]->type == Expression::Type::TypeName &&
+                        (!isConcreteStdType(e.arguments[i]->name) ||
+                            (arrayType(e.arguments[i]->name) && builtin != "size_of" && builtin != "sizeof")))
                         throw std::runtime_error("std.types." + builtin + " does not support type '" + e.arguments[i]->name + "'");
                 }
             }
@@ -331,7 +391,11 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
                 std::string type = d.type;
                 if (!d.values.empty()) {
                     const auto valueType = expressionType(*d.values[i], scopes, functions, program, loopStack);
-                    if (type == "auto") type = valueType;
+                    if (type == "auto") {
+                        if (valueType == "array" || valueType.find("array") != std::string::npos)
+                            throw std::runtime_error("Empty array literals need an explicit array type");
+                        type = valueType;
+                    }
                     else if (type != "const" && !assignable(type, valueType))
                         throw std::runtime_error("Cannot initialize '" + name + "' of type " + type + " with " + valueType);
                 }
@@ -351,6 +415,20 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
             for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) if (auto it = scope->find(s.name); it != scope->end()) { target = it->second.type; isConst = it->second.isConst; found = true; break; }
             if (!found) throw std::runtime_error("Cannot assign to undefined variable: " + s.name);
             if (isConst) throw std::runtime_error("Cannot assign to const variable: " + s.name);
+            if (!s.indices.empty()) {
+                if (!arrayType(target)) throw std::runtime_error("Cannot index a non-array value");
+                std::string element = target;
+                for (const auto& index : s.indices) {
+                    const auto indexType = expressionType(*index, scopes, functions, program, loopStack);
+                    if (!integerType(indexType) && indexType != "any") throw std::runtime_error("Array index must be an integer");
+                    if (!arrayType(element)) throw std::runtime_error("Cannot index a non-array value");
+                    element = arrayElementType(element);
+                }
+                if (s.operation != "=" || !s.expression) throw std::runtime_error("Array elements support simple assignment only");
+                const auto source = expressionType(*s.expression, scopes, functions, program, loopStack);
+                if (!assignable(element, source)) throw std::runtime_error("Cannot assign " + source + " to array element " + element);
+                continue;
+            }
             if (s.expression) {
                 const auto source = expressionType(*s.expression, scopes, functions, program, loopStack);
                 if (s.operation == "=" && !assignable(target, source)) throw std::runtime_error("Cannot assign " + source + " to " + target);

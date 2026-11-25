@@ -1,5 +1,79 @@
 include("${CMAKE_CURRENT_LIST_DIR}/test_helpers.cmake")
 
+run_rift_case(arrays_literals_indexing_copy_and_functions [=[using std
+using std.types
+func edit(values: int[]) -> int[] {
+    values[0] = 99
+    return values
+}
+func main() {
+    values := [1, 2, 3]
+    values[0] = 4
+    values.append(5)
+    copy := values
+    copy[1] = 9
+    result := edit(values)
+    println("{} {} {} {} {}", values.length, type_of(values), size_of(values), type_of(int[][]), size_of(int[]))
+    println(values)
+    println(copy)
+    println(result)
+}
+]=] 0 "4 int[] 8 int[][] 8\n[4, 2, 3, 5]\n[4, 9, 3, 5]\n[99, 2, 3, 5]\n")
+
+run_rift_case(arrays_nested_and_empty [=[using std
+func main() {
+    values: int[][] = [[1, 2], []]
+    values[0][1] = 7
+    values[1] = [8]
+    empty: int[] = []
+    println(values)
+    println(empty.length)
+}
+]=] 0 "[[1, 7], [8]]\n0\n")
+
+run_rift_case(arrays_numeric_promotion_and_any [=[using std
+func main() {
+    values := [1, 2.5]
+    mixed: any[] = []
+    mixed.append(1)
+    mixed.append("two")
+    mixed.append(true)
+    println("{} {}", types.type_of(values), values)
+    println(mixed)
+}
+]=] 0 "double[] [1, 2.5]\n[1, two, true]\n")
+
+run_rift_case_contains(array_index_out_of_range [=[using std
+func main() {
+    values := [1]
+    println(values[1])
+}
+]=] 1 "Array index out of range")
+
+run_rift_case_contains(array_negative_index [=[using std
+func main() {
+    values := [1]
+    println(values[-1])
+}
+]=] 1 "Array index must be a non-negative integer no larger than uint64")
+
+run_rift_case_contains(array_rejects_incompatible_element [=[func main() {
+    values := [1, 2]
+    values[0] = "wrong"
+}
+]=] 1 "Cannot assign string to array element int")
+
+run_rift_case_contains(array_rejects_empty_inference [=[func main() {
+    values := []
+}
+]=] 1 "Empty array literals need an explicit array type")
+
+run_rift_case_contains(array_rejects_const_append [=[func main() {
+    const values: int[] = [1]
+    values.append(2)
+}
+]=] 1 "Cannot mutate const array")
+
 run_rift_case(floating_compound [=[using std
 func main() {
     value: double = 5.5

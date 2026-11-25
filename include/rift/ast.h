@@ -11,7 +11,9 @@
 
 namespace rift {
 
-using RuntimeValue = std::variant<WideInteger, float, double, Decimal, bool, std::string, std::u16string, char16_t, std::monostate>;
+struct RuntimeArray;
+using RuntimeValue = std::variant<WideInteger, float, double, Decimal, bool, std::string, std::u16string, char16_t, std::shared_ptr<RuntimeArray>, std::monostate>;
+struct RuntimeArray { std::vector<RuntimeValue> elements; std::string elementType; };
 
 struct SourcePosition { std::size_t line = 1; std::size_t column = 1; };
 struct SourceSpan { SourcePosition start; SourcePosition end; };
@@ -31,7 +33,10 @@ struct Expression
         Unary,
         Binary,
         Conditional,
-        Call
+        Call,
+        Array,
+        Index,
+        Member
     };
 
     Type type;
@@ -46,6 +51,7 @@ struct Expression
     std::unique_ptr<Expression> right;
     std::unique_ptr<Expression> third;
     std::vector<std::unique_ptr<Expression>> arguments;
+    std::vector<std::unique_ptr<Expression>> indices;
 };
 
 struct VariableDeclaration
@@ -85,6 +91,7 @@ struct Statement
     std::string name;
     std::string operation = "=";
     std::unique_ptr<Expression> expression;
+    std::vector<std::unique_ptr<Expression>> indices;
     std::vector<std::unique_ptr<Expression>> arguments;
     bool newline = true;
     std::vector<IfBranch> branches;

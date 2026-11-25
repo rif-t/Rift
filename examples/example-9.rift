@@ -1,0 +1,27 @@
+/*
+Lists in RIFT
+Author: rif-t 25.11.2026 18:15 GMT+2:00
+*/
+using std
+
+func main(){
+    check_list : bool[] = [ true, false ]
+
+    println(check_list[0])
+    println(check_list[1])
+
+
+    println()
+
+    // Using with loops and different data types
+    array : any[]
+    array.append("Bob")
+    array.append(25)
+    array.append(true)
+    array.append('a')
+    array.append(3.141)
+
+    for i:=0; i<5; i++{
+        print("{} ", array[i])
+    }
+}

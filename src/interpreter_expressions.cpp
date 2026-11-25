@@ -43,6 +43,7 @@ std::string valueType(const RuntimeValue& value)
     if (std::holds_alternative<double>(value)) return "double";
     if (std::holds_alternative<Decimal>(value)) return "decimal";
     if (std::holds_alternative<bool>(value)) return "bool";
+    if (const auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&value)) return (*array)->elementType + "[]";
     if (std::holds_alternative<std::u16string>(value)) return "string";
     if (std::holds_alternative<char16_t>(value)) return "char";
     return "void";
@@ -58,6 +59,7 @@ std::uint64_t loopCount(const RuntimeValue& value, const std::string& purpose)
 
 std::size_t typeSize(const std::string& type)
 {
+    if (type.ends_with("[]")) return 8;
     if (type == "bool" || type == "int8" || type == "uint8") return 1;
     if (type == "char") return 2;
     if (type == "int16" || type == "uint16") return 2;
@@ -144,6 +146,18 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
         return expression.value;
     case Expression::Type::TypeName:
         return expression.name;
+    case Expression::Type::Array: {
+        auto array = std::make_shared<RuntimeArray>();
+        const std::string& type = analysis_->expressions.at(&expression).resolvedType;
+        if (type.ends_with("[]")) array->elementType = type.substr(0, type.size() - 2);
+        for (const auto& item : expression.arguments) {
+            RuntimeValue value = evaluate(*item);
+            if (array->elementType.empty()) array->elementType = valueType(value);
+            value = validateValue(std::move(value), array->elementType, "array element");
+            array->elements.push_back(std::move(value));
+        }
+        return array;
+    }
     case Expression::Type::Identifier: {
         const auto dot = expression.name.rfind('.');
         if (dot != std::string::npos) {
@@ -173,10 +187,54 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
             auto it = scope->find(expression.name);
             if (it != scope->end()) {
                 if (std::holds_alternative<std::monostate>(it->second.value)) throw std::runtime_error("Variable used before initialization: " + expression.name);
-                return it->second.value;
+                return cloneValue(it->second.value);
             }
         }
         throw std::runtime_error("Undefined variable: " + expression.name);
+    }
+    case Expression::Type::Index: {
+        RuntimeValue value = evaluate(*expression.left);
+        for (const auto& indexExpression : expression.indices) {
+            auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&value);
+            if (!array || !*array) throw std::runtime_error("Cannot index a non-array value");
+            const auto index = loopCount(evaluate(*indexExpression), "Array index");
+            if (index >= (*array)->elements.size()) throw std::runtime_error("Array index out of range");
+            value = cloneValue((*array)->elements[static_cast<std::size_t>(index)]);
+        }
+        return value;
+    }
+    case Expression::Type::Member: {
+        if (expression.name == "length") {
+            RuntimeValue receiver = evaluate(*expression.left);
+            const auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&receiver);
+            if (!array || !*array) throw std::runtime_error("length requires an array");
+            return WideInteger{UInt128{0, (*array)->elements.size()}, false, false};
+        }
+        if (expression.left->type == Expression::Type::Identifier &&
+            (expression.name == "iteration" || expression.name == "limit" || expression.name == "break" || expression.name == "continue" || expression.name == "restart")) {
+            const std::string& target = expression.left->name;
+            const std::string& member = expression.name;
+            auto state = loopStates_.rbegin();
+            if (target == "loop") {
+                if (state == loopStates_.rend()) throw std::runtime_error("No active loop for 'loop." + member + "'");
+            } else {
+                while (state != loopStates_.rend() && state->name != target) ++state;
+                if (state == loopStates_.rend()) throw std::runtime_error("No active loop named '" + target + "'");
+            }
+            if (member == "iteration") return WideInteger{UInt128{0, state->iterations}, false, true, 64};
+            if (member == "limit") {
+                if (!state->limit) throw std::runtime_error("Loop has no iteration limit");
+                return WideInteger{UInt128{0, *state->limit}, false, true, 64};
+            }
+            const std::string signalTarget = target == "loop" ? "" : target;
+            if (member == "break") throw LoopControlSignal{signalTarget, LoopAction::Break};
+            if (member == "continue") throw LoopControlSignal{signalTarget, LoopAction::Continue};
+            if (member == "restart") {
+                if (!state->supportsRestartSkip) throw std::runtime_error("restart is only available for for loops");
+                throw LoopControlSignal{signalTarget, LoopAction::Restart};
+            }
+        }
+        throw std::runtime_error("Unknown array member: " + expression.name);
     }
     case Expression::Type::Unary: {
         RuntimeValue value = evaluate(*expression.left);
@@ -226,6 +284,28 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
         return result;
     }
     case Expression::Type::Call: {
+        if (expression.name == "append") {
+            if (!expression.left || expression.left->type != Expression::Type::Identifier || expression.arguments.size() != 1)
+                throw std::runtime_error("append expects one array variable and one value");
+            auto scope = scopes_.rbegin();
+            while (scope != scopes_.rend() && !scope->contains(expression.left->name)) ++scope;
+            if (scope == scopes_.rend()) throw std::runtime_error("Undefined array: " + expression.left->name);
+            auto& variable = scope->at(expression.left->name);
+            if (variable.isConst) throw std::runtime_error("Cannot mutate const array: " + expression.left->name);
+            auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&variable.value);
+            if ((!array || !*array) && std::holds_alternative<std::monostate>(variable.value) && variable.type.ends_with("[]")) {
+                auto initialized = std::make_shared<RuntimeArray>();
+                initialized->elementType = variable.type.substr(0, variable.type.size() - 2);
+                variable.value = std::move(initialized);
+                array = std::get_if<std::shared_ptr<RuntimeArray>>(&variable.value);
+            }
+            if (!array || !*array) throw std::runtime_error("append receiver must be an array");
+            RuntimeValue item = evaluate(*expression.arguments.front());
+            if ((*array)->elementType.empty()) (*array)->elementType = valueType(item);
+            item = validateValue(std::move(item), (*array)->elementType, "array element");
+            (*array)->elements.push_back(std::move(item));
+            return std::monostate{};
+        }
         if (expression.name.ends_with(".skip") || expression.name.ends_with(".break_if")) {
             const bool isSkip = expression.name.ends_with(".skip");
             const std::string target = expression.name.substr(0, expression.name.rfind('.'));

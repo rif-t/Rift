@@ -31,6 +31,12 @@ void Parser::setSpan(Expression& expression, std::size_t start, std::size_t end)
                 argument->source = expression.source;
             self(self, *argument);
         }
+        for (auto& index : node.indices) {
+            if (index->source.start.line == 1 && index->source.start.column == 1 &&
+                index->source.end.line == 1 && index->source.end.column == 1)
+                index->source = expression.source;
+            self(self, *index);
+        }
     };
     fillMissing(fillMissing, expression);
 }
@@ -138,7 +144,7 @@ std::unique_ptr<Expression> Parser::parseMultiplicative()
 
 std::unique_ptr<Expression> Parser::parsePower()
 {
-    auto left = parsePrimary();
+    auto left = parsePostfix();
 
     if (current().type == TokenType::Power) {
         consume();
@@ -180,6 +186,11 @@ std::unique_ptr<Expression> Parser::parsePrimary()
         expression->type = Expression::Type::TypeName;
         expression->name = token.text;
         consume();
+        while (current().type == TokenType::LeftBracket && peek().type == TokenType::RightBracket) {
+            consume();
+            consume();
+            expression->name += "[]";
+        }
         return expression;
     }
 
@@ -207,6 +218,21 @@ std::unique_ptr<Expression> Parser::parsePrimary()
         consume();
         auto expression = parseExpression();
         expect(TokenType::RightParen);
+        return expression;
+    }
+
+    if (token.type == TokenType::LeftBracket) {
+        auto expression = std::make_unique<Expression>();
+        expression->type = Expression::Type::Array;
+        consume();
+        if (current().type != TokenType::RightBracket) {
+            do {
+                expression->arguments.push_back(parseExpression());
+                if (current().type != TokenType::Comma) break;
+                consume();
+            } while (true);
+        }
+        expect(TokenType::RightBracket);
         return expression;
     }
 
@@ -239,32 +265,73 @@ std::unique_ptr<Expression> Parser::parsePrimary()
     if (token.type == TokenType::Identifier) {
         auto expression = std::make_unique<Expression>();
         expression->name = token.text;
+        expression->type = Expression::Type::Identifier;
         consume();
-        while (current().type == TokenType::Dot) {
-            consume();
-            if (current().type != TokenType::Identifier && current().type != TokenType::Break)
-                throw std::runtime_error("Expected name after '.'");
-            expression->name += "." + consume().text;
-        }
-        if (current().type == TokenType::LeftParen) {
-            expression->type = Expression::Type::Call;
-            consume();
-            if (current().type != TokenType::RightParen) {
-                do {
-                    expression->arguments.push_back(parseExpression());
-                    if (current().type != TokenType::Comma) break;
-                    consume();
-                } while (true);
-            }
-            expect(TokenType::RightParen);
-        } else {
-            expression->type = Expression::Type::Identifier;
-        }
         return expression;
     }
 
     throw std::runtime_error("Expected expression at line " + std::to_string(current().line) +
         ", column " + std::to_string(current().column));
+}
+
+std::unique_ptr<Expression> Parser::parsePostfix()
+{
+    auto expression = parsePrimary();
+    while (true) {
+        if (current().type == TokenType::LeftBracket) {
+            auto indexed = std::make_unique<Expression>();
+            indexed->type = Expression::Type::Index;
+            indexed->left = std::move(expression);
+            do {
+                consume();
+                indexed->indices.push_back(parseExpression());
+                expect(TokenType::RightBracket);
+            } while (current().type == TokenType::LeftBracket);
+        expression = std::move(indexed);
+        } else if (current().type == TokenType::Dot) {
+            consume();
+            if (current().type != TokenType::Identifier && current().type != TokenType::Break)
+                throw std::runtime_error("Expected name after '.'");
+            const std::string memberName = current().text;
+            if (expression->type == Expression::Type::Identifier &&
+                (memberName == "iteration" || memberName == "limit" || memberName == "break" || memberName == "continue" || memberName == "restart")) {
+                expression->name += "." + consume().text;
+                continue;
+            }
+            auto member = std::make_unique<Expression>();
+            member->type = Expression::Type::Member;
+            member->name = consume().text;
+            member->left = std::move(expression);
+            expression = std::move(member);
+        } else if (current().type == TokenType::LeftParen) {
+            auto call = std::make_unique<Expression>();
+            call->type = Expression::Type::Call;
+            if (expression->type == Expression::Type::Member && expression->name == "append") {
+                call->left = std::move(expression->left);
+                call->name = "append";
+            } else {
+                auto* part = expression.get();
+                while (part->type == Expression::Type::Member) {
+                    call->name = "." + part->name + call->name;
+                    part = part->left.get();
+                }
+                if (part->type != Expression::Type::Identifier)
+                    throw std::runtime_error("Only named functions and array methods can be called");
+                call->name = part->name + call->name;
+            }
+            consume();
+            if (current().type != TokenType::RightParen) {
+                do {
+                    call->arguments.push_back(parseExpression());
+                    if (current().type != TokenType::Comma) break;
+                    consume();
+                } while (true);
+            }
+            expect(TokenType::RightParen);
+            expression = std::move(call);
+        } else break;
+    }
+    return expression;
 }
 
 }

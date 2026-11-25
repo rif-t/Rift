@@ -182,7 +182,13 @@ std::string Parser::parseType(bool allowVoid)
         throw std::runtime_error("Expected type, found " + tokenDescription(type));
     }
     consume();
-    return type.text;
+    std::string result = type.text;
+    while (current().type == TokenType::LeftBracket) {
+        consume();
+        expect(TokenType::RightBracket);
+        result += "[]";
+    }
+    return result;
 }
 
 Statement Parser::parseStatement()
@@ -253,7 +259,7 @@ Statement Parser::parseStatement()
         return statement;
     }
 
-    if (peek().type == TokenType::Equal || peek().type == TokenType::PlusEqual ||
+    if (peek().type == TokenType::Equal || peek().type == TokenType::LeftBracket || peek().type == TokenType::PlusEqual ||
         peek().type == TokenType::MinusEqual || peek().type == TokenType::MultiplyEqual ||
         peek().type == TokenType::DivideEqual || peek().type == TokenType::RemainderEqual ||
         peek().type == TokenType::PowerEqual || peek().type == TokenType::Increment ||
@@ -261,6 +267,13 @@ Statement Parser::parseStatement()
         Statement statement;
         statement.type = Statement::Type::Assignment;
         statement.name = consume().text;
+        while (current().type == TokenType::LeftBracket) {
+            consume();
+            statement.indices.push_back(parseExpression());
+            expect(TokenType::RightBracket);
+        }
+        if (!statement.indices.empty() && current().type != TokenType::Equal)
+            throw std::runtime_error("Array elements support simple assignment only");
         const TokenType op = consume().type;
         switch (op) {
         case TokenType::Equal: statement.operation = "="; break;

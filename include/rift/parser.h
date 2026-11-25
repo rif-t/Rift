@@ -45,6 +45,7 @@ private:
     std::unique_ptr<Expression> parsePower();
     std::unique_ptr<Expression> parseUnary();
     std::unique_ptr<Expression> parsePrimary();
+    std::unique_ptr<Expression> parsePostfix();
     void setSpan(Expression& expression, std::size_t start, std::size_t end) const;
 
     const std::vector<Token>& tokens_;

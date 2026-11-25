@@ -17,6 +17,7 @@ floating-point and decimal numbers.
 | `double` | 64-bit IEEE-754 binary floating point |
 | `decimal` | Signed 128-bit base-10 coefficient with scale metadata |
 | `any` | A value whose concrete type is checked at runtime |
+| `T[]` | Mutable array of values of type `T`; arrays can be nested |
 
 ```rift
 enabled: bool = true
@@ -43,7 +44,32 @@ first, second: string
 ```
 
 `const` makes a variable immutable after initialization. Local variables are
-scoped to their enclosing function or block.
+scoped to their enclosing function or block. A typed declaration can omit its
+initializer; reading the variable before assigning it is an error.
+
+## Arrays
+
+Array literals infer their element type and must contain compatible values.
+Use an explicit array type for an empty array. Array types can be used for
+variables, function parameters, and return values.
+
+```rift
+values := [1, 2, 3]
+values[0] = 4
+values.append(5)
+println("{} {}", values.length, values)
+
+empty: int[] = []
+matrix: int[][] = [[1, 2], []]
+
+pending: int[]
+pending.append(1) // The first append initializes the array.
+```
+
+Indexes start at zero. Negative or out-of-range indexes are runtime errors,
+and element assignments must match the array's element type. `length` is
+read-only. Assigning an array or passing it to a function makes an independent
+copy, including nested arrays. A `const` array cannot be changed or appended.
 
 ## Numeric behavior
 

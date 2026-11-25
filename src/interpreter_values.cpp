@@ -257,7 +257,19 @@ bool requireBoolean(const RuntimeValue& value, const std::string& context)
 
 RuntimeValue validateValue(RuntimeValue value, const std::string& type, const std::string& name)
 {
-    if (type == "any") return value;
+    if (type == "any") return cloneValue(value);
+    if (type == "array") {
+        if (!std::holds_alternative<std::shared_ptr<RuntimeArray>>(value)) throw std::runtime_error("Value for '" + name + "' must be an array");
+        return value;
+    }
+    if (type.ends_with("[]")) {
+        auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&value);
+        if (!array || !*array) throw std::runtime_error("Value for '" + name + "' must be " + type);
+        const std::string elementType = type.substr(0, type.size() - 2);
+        for (auto& element : (*array)->elements) element = validateValue(std::move(element), elementType, name + " element");
+        (*array)->elementType = elementType;
+        return value;
+    }
     const bool numeric = std::holds_alternative<WideInteger>(value) || std::holds_alternative<float>(value) ||
         std::holds_alternative<double>(value) || std::holds_alternative<Decimal>(value);
     if (type == "float" || type == "double" || type == "decimal") {
@@ -340,6 +352,19 @@ RuntimeValue validateValue(RuntimeValue value, const std::string& type, const st
     return integer;
 }
 
+RuntimeValue cloneValue(const RuntimeValue& value)
+{
+    if (const auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&value)) {
+        if (!*array) return std::shared_ptr<RuntimeArray>{};
+        auto copy = std::make_shared<RuntimeArray>();
+        copy->elementType = (*array)->elementType;
+        copy->elements.reserve((*array)->elements.size());
+        for (const auto& element : (*array)->elements) copy->elements.push_back(cloneValue(element));
+        return copy;
+    }
+    return value;
+}
+
 std::string stringify(const RuntimeValue& value)
 {
     if (const auto* integer = std::get_if<WideInteger>(&value)) return integer->toString();
@@ -350,6 +375,15 @@ std::string stringify(const RuntimeValue& value)
     if (const auto* typeName = std::get_if<std::string>(&value)) return *typeName;
     if (const auto* string = std::get_if<std::u16string>(&value)) return utf16ToUtf8(*string);
     if (const auto* character = std::get_if<char16_t>(&value)) return utf16ToUtf8(std::u16string(1, *character));
+    if (const auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&value)) {
+        if (!*array) return "[]";
+        std::string result = "[";
+        for (std::size_t i = 0; i < (*array)->elements.size(); ++i) {
+            if (i) result += ", ";
+            result += stringify((*array)->elements[i]);
+        }
+        return result + "]";
+    }
     throw std::runtime_error("Void function has no printable value");
 }
 

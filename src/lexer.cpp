@@ -247,6 +247,9 @@ std::vector<Token> Lexer::tokenize()
             continue;
         }
 
+        if (c == '[') { emit(TokenType::LeftBracket, "["); advance(); continue; }
+        if (c == ']') { emit(TokenType::RightBracket, "]"); advance(); continue; }
+
         // :
         if (c == ':') {
             advance();

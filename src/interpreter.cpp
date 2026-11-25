@@ -21,6 +21,7 @@ std::string inferType(const RuntimeValue& value)
     if (std::holds_alternative<double>(value)) return "double";
     if (std::holds_alternative<Decimal>(value)) return "decimal";
     if (std::holds_alternative<bool>(value)) return "bool";
+    if (const auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&value)) return (*array)->elementType + "[]";
     if (std::holds_alternative<std::u16string>(value)) return "string";
     if (std::holds_alternative<char16_t>(value)) return "char";
     throw std::runtime_error("Cannot infer a type from a void value");
@@ -140,6 +141,22 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
             if (scope == scopes_.rend()) throw std::runtime_error("Cannot assign to undefined variable: " + statement.name);
             auto& variable = scope->at(statement.name);
             if (variable.isConst) throw std::runtime_error("Cannot assign to const variable: " + statement.name);
+            if (!statement.indices.empty()) {
+                auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&variable.value);
+                if (!array || !*array) throw std::runtime_error("Cannot index a non-array value");
+                for (std::size_t i = 0; i < statement.indices.size(); ++i) {
+                    const auto index = loopCount(evaluate(*statement.indices[i]), "Array index");
+                    if (index >= (*array)->elements.size()) throw std::runtime_error("Array index out of range");
+                    auto& element = (*array)->elements[static_cast<std::size_t>(index)];
+                    if (i + 1 == statement.indices.size()) {
+                        element = validateValue(evaluate(*statement.expression), (*array)->elementType, "array element");
+                    } else {
+                        array = std::get_if<std::shared_ptr<RuntimeArray>>(&element);
+                        if (!array || !*array) throw std::runtime_error("Cannot index a non-array value");
+                    }
+                }
+                continue;
+            }
             RuntimeValue value;
             if (statement.operation == "=") {
                 value = evaluate(*statement.expression);
