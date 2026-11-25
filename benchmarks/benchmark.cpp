@@ -302,6 +302,13 @@ func main() {
 values: int[][] = [[1, 2], [3, 4]]
 for i := 0; i < 100; i++ { consume(values) }
 })", 3);
+    runWorkload("several array arguments (100 calls)", R"(func consume(first: int[], second: int[], third: int[]) { item := first[0] + second[0] + third[0] }
+func main() {
+first := [1, 2, 3]
+second := [4, 5, 6]
+third := [7, 8, 9]
+for i := 0; i < 100; i++ { consume(first, second, third) }
+})", 3);
     runWorkload("array arguments returned (100 calls)", R"(func identity(values: int[]) -> int[] { return values }
 func main() {
 values := [1, 2, 3]
