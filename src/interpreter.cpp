@@ -2,6 +2,7 @@
 #include "interpreter_internal.h"
 #include "semantic_analysis.h"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 
@@ -53,26 +54,15 @@ void Interpreter::run(const Program& program)
 {
     const AnalysisResult analysis = validateProgram(program);
     analysis_ = &analysis;
-    functions_.clear();
     usingNamespaces_ = program.usingNamespaces;
-    for (const auto& function : program.functions) functions_[function.name].push_back(&function);
-    callFunction("main", {});
+    const auto main = std::find_if(program.functions.begin(), program.functions.end(), [](const Function& function) { return function.name == "main"; });
+    callFunction("main", {}, &*main);
 }
 
 RuntimeValue Interpreter::callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments, const Function* selected)
 {
-    auto found = functions_.find(name);
-    if (!selected && found == functions_.end() && name.find('.') == std::string::npos) {
-        for (const auto& namespaceName : usingNamespaces_) {
-            if (namespaceName == "std") continue;
-            auto candidate = functions_.find(namespaceName + "." + name);
-            if (candidate == functions_.end()) continue;
-            if (found != functions_.end()) throw std::runtime_error("Ambiguous function '" + name + "'; qualify it with its namespace");
-            found = candidate;
-        }
-    }
-    if (!selected && found == functions_.end()) throw std::runtime_error("Undefined function: " + name);
-    const Function& function = selected ? *selected : *found->second.front();
+    if (!selected) throw std::runtime_error("Undefined function: " + name);
+    const Function& function = *selected;
     if (arguments.size() != function.parameters.size()) {
         throw std::runtime_error("Function '" + name + "' expects " + std::to_string(function.parameters.size()) + " argument(s)");
     }

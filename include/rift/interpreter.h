@@ -43,7 +43,6 @@ private:
     };
     std::vector<std::unique_ptr<CallFrame>> callFrames_;
     std::size_t callDepth_ = 0;
-    std::unordered_map<std::string, std::vector<const Function*>> functions_;
     std::vector<std::string> usingNamespaces_;
     std::vector<LoopState> loopStates_;
     const AnalysisResult* analysis_ = nullptr;
