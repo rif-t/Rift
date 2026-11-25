@@ -24,6 +24,7 @@ bool compareValues(const RuntimeValue& left, const RuntimeValue& right, const st
 bool requireBoolean(const RuntimeValue& value, const std::string& context);
 RuntimeValue validateValue(RuntimeValue value, const std::string& type, const std::string& name);
 RuntimeValue cloneValue(const RuntimeValue& value);
+void ensureUniqueArray(std::shared_ptr<RuntimeArray>& array);
 std::string stringify(const RuntimeValue& value);
 fmt::Argument formatArgument(const RuntimeValue& value);
 }

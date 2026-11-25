@@ -145,6 +145,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&variable.value);
                 if (!array || !*array) throw std::runtime_error("Cannot index a non-array value");
                 for (std::size_t i = 0; i < statement.indices.size(); ++i) {
+                    ensureUniqueArray(*array);
                     const auto index = loopCount(evaluate(*statement.indices[i]), "Array index");
                     if (index >= (*array)->elements.size()) throw std::runtime_error("Array index out of range");
                     auto& element = (*array)->elements[static_cast<std::size_t>(index)];

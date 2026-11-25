@@ -31,6 +31,34 @@ func main() {
 }
 ]=] 0 "[[1, 7], [8]]\n0\n")
 
+run_rift_case(arrays_copy_on_write_values [=[using std
+func edit(values: int[][]) -> int[][] {
+    values[0][1] = 90
+    values.append([7])
+    return values
+}
+func main() {
+    original: int[][] = [[1, 2], [3, 4]]
+    assigned := original
+    assigned[0][0] = 8
+    returned := edit(original)
+    returned[1][0] = 6
+    println(original)
+    println(assigned)
+    println(returned)
+}
+]=] 0 "[[1, 2], [3, 4]]\n[[8, 2], [3, 4]]\n[[1, 90], [6, 4], [7]]\n")
+
+run_rift_case(arrays_copy_on_write_deep_detach [=[using std
+func main() {
+    values: int[][][][] = [[[[1]]]]
+    copy := values
+    copy[0][0][0][0] = 9
+    println(values)
+    println(copy)
+}
+]=] 0 "[[[[1]]]]\n[[[[9]]]]\n")
+
 run_rift_case(arrays_numeric_promotion_and_any [=[using std
 func main() {
     values := [1, 2.5]

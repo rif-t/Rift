@@ -303,6 +303,7 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
             RuntimeValue item = evaluate(*expression.arguments.front());
             if ((*array)->elementType.empty()) (*array)->elementType = valueType(item);
             item = validateValue(std::move(item), (*array)->elementType, "array element");
+            ensureUniqueArray(*array);
             (*array)->elements.push_back(std::move(item));
             return std::monostate{};
         }

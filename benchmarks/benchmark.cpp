@@ -4,11 +4,15 @@
 #include "parser.h"
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <new>
 #include <string>
+#include <vector>
+
+using namespace rift;
 
 namespace {
 std::atomic<bool> countAllocations{false};
@@ -24,17 +28,27 @@ struct AllocationWindow {
 template <class F>
 void measure(const std::string& name, std::size_t operations, F&& fn)
 {
-    const auto start = std::chrono::steady_clock::now();
-    std::size_t count = 0, bytes = 0;
-    {
-        AllocationWindow window;
-        fn();
-        count = allocationCount.load();
-        bytes = allocationBytes.load();
+    std::vector<double> times;
+    std::vector<double> allocations, bytes;
+    for (int sample = 0; sample < 7; ++sample) {
+        std::size_t count = 0, allocated = 0;
+        const auto start = std::chrono::steady_clock::now();
+        {
+            AllocationWindow window;
+            fn();
+            count = allocationCount.load();
+            allocated = allocationBytes.load();
+        }
+        times.push_back(std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / operations);
+        allocations.push_back(static_cast<double>(count) / operations);
+        bytes.push_back(static_cast<double>(allocated) / operations);
     }
-    const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
-    std::cout << name << ": " << elapsed / static_cast<double>(operations) << " ns/op, "
-              << count << " allocations, " << bytes << " allocated bytes\n";
+    const auto median = [](std::vector<double>& values) {
+        std::sort(values.begin(), values.end());
+        return values[values.size() / 2];
+    };
+    std::cout << name << ": median " << median(times) << " ns/op, "
+              << median(allocations) << " allocations/op, " << median(bytes) << " allocated bytes/op (7 runs)\n";
 }
 
 Program parseSource(const std::string& source)
@@ -122,6 +136,25 @@ std::string nestedExpressionProgram()
     for (int i = 0; i < 100; ++i) expression = "1 + (" + expression + ")";
     return "func main() { value: int = " + expression + " }\n";
 }
+
+std::string arrayWorkload(const std::string& body)
+{
+    std::string source = "func consume(values: int[]) { item := values[0] }\nfunc main() {\nvalues := [";
+    for (int i = 0; i < 2048; ++i) source += (i ? "," : "") + std::to_string(i);
+    source += "]\n" + body + "\n}\n";
+    return source;
+}
+
+std::string deepArrayWorkload()
+{
+    std::string type = "int", literal = "1", path = "copy";
+    for (int i = 0; i < 8; ++i) {
+        type += "[]";
+        literal = "[" + literal + "]";
+        path += "[0]";
+    }
+    return "func main() {\nvalues: " + type + " = " + literal + "\nfor i := 0; i < 40; i++ {\ncopy := values\n" + path + " = i\n}\n}\n";
+}
 }
 
 void* operator new(std::size_t size)
@@ -166,6 +199,24 @@ int runBenchmarks()
     runWorkload("scope and variable lookup (250 frames)", lookupProgram(), 150);
     runWorkload("string concatenation (150 steps)", stringProgram(), 100);
     runWorkload("nested expressions (100 levels)", nestedExpressionProgram(), 300);
+
+    runWorkload("array reads (2048 items x 100 reads)", arrayWorkload(R"(for i := 0; i < 100; i++ { copy := values })"), 3);
+    runWorkload("array element access (2048 items x 1000 accesses)", arrayWorkload(R"(total := 0
+for i := 0; i < 1000; i++ { total += values[i % 2048] })"), 3);
+    runWorkload("large array copies (2048 items x 20 copies)", arrayWorkload(R"(for i := 0; i < 20; i++ { copy := values })"), 3);
+    runWorkload("shared array modifications (2048 items x 20 detaches)", arrayWorkload(R"(for i := 0; i < 20; i++ {
+copy := values
+copy[0] = i
+})"), 3);
+    runWorkload("array function arguments (2048 items x 100 calls)", arrayWorkload(R"(for i := 0; i < 100; i++ { consume(values) })"), 3);
+    runWorkload("array append (1000 elements)", R"(func main() { values: int[] = []
+for i := 0; i < 1000; i++ { values.append(i) } })", 3);
+    runWorkload("nested array reads and copies", R"(func main() { values: int[][] = [[1, 2], [3, 4], [5, 6]]
+for i := 0; i < 500; i++ {
+copy := values
+item := values[1]
+} })", 3);
+    runWorkload("deep nested array copies and writes (8 levels x 40)", deepArrayWorkload(), 3);
 
     const UInt128 dividend{UINT64_C(0xfedcba9876543210), UINT64_C(0x123456789abcdef0)};
     const UInt128 divisor{0, UINT64_C(123456789)};

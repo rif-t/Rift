@@ -266,6 +266,8 @@ RuntimeValue validateValue(RuntimeValue value, const std::string& type, const st
         auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&value);
         if (!array || !*array) throw std::runtime_error("Value for '" + name + "' must be " + type);
         const std::string elementType = type.substr(0, type.size() - 2);
+        if ((*array)->elementType == elementType) return value;
+        ensureUniqueArray(*array);
         for (auto& element : (*array)->elements) element = validateValue(std::move(element), elementType, name + " element");
         (*array)->elementType = elementType;
         return value;
@@ -354,15 +356,12 @@ RuntimeValue validateValue(RuntimeValue value, const std::string& type, const st
 
 RuntimeValue cloneValue(const RuntimeValue& value)
 {
-    if (const auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&value)) {
-        if (!*array) return std::shared_ptr<RuntimeArray>{};
-        auto copy = std::make_shared<RuntimeArray>();
-        copy->elementType = (*array)->elementType;
-        copy->elements.reserve((*array)->elements.size());
-        for (const auto& element : (*array)->elements) copy->elements.push_back(cloneValue(element));
-        return copy;
-    }
     return value;
+}
+
+void ensureUniqueArray(std::shared_ptr<RuntimeArray>& array)
+{
+    if (array && array.use_count() != 1) array = std::make_shared<RuntimeArray>(*array);
 }
 
 std::string stringify(const RuntimeValue& value)
