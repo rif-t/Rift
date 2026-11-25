@@ -5,7 +5,6 @@
 
 #include <string>
 #include <variant>
-#include <unordered_map>
 #include <optional>
 #include <cstdint>
 #include <vector>
@@ -18,7 +17,7 @@ public:
     void run(const Program& program);
 
 private:
-    void executeStatements(const std::vector<Statement>& statements);
+    void executeStatements(const std::vector<Statement>& statements, bool clearSlots = true);
     RuntimeValue callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments, const Function* selected = nullptr);
 
     RuntimeValue evaluate(const Expression& expression);
@@ -32,8 +31,7 @@ private:
         std::uint64_t skipsRemaining = 0;
         bool supportsRestartSkip = true;
     };
-    using Scope = std::unordered_map<std::string, Variable>;
-    std::vector<Scope> scopes_;
+    std::vector<Variable> locals_;
     std::unordered_map<std::string, std::vector<const Function*>> functions_;
     std::vector<std::string> usingNamespaces_;
     std::vector<LoopState> loopStates_;

@@ -33,6 +33,13 @@ struct ScopePopGuard {
     ~ScopePopGuard() { scopes.pop_back(); }
 };
 
+template <typename SlotVector>
+struct SlotClearGuard {
+    SlotVector& slots;
+    const std::vector<std::size_t>* indices;
+    ~SlotClearGuard() { if (indices) for (const auto index : *indices) slots[index] = {}; }
+};
+
 std::uint64_t loopCount(const RuntimeValue& value, const std::string& purpose)
 {
     const auto* integer = std::get_if<WideInteger>(&value);
@@ -70,19 +77,18 @@ RuntimeValue Interpreter::callFunction(const std::string& name, const std::vecto
         throw std::runtime_error("Function '" + name + "' expects " + std::to_string(function.parameters.size()) + " argument(s)");
     }
 
-    auto previousScopes = std::move(scopes_);
-    scopes_.clear();
-    scopes_.emplace_back();
+    auto previousLocals = std::move(locals_);
+    locals_.resize(analysis_->functionSlotCounts.at(&function));
     try {
         for (std::size_t i = 0; i < arguments.size(); ++i) {
             const auto& [parameterName, parameterType] = function.parameters[i];
-            scopes_.back()[parameterName] = {validateValue(arguments[i], parameterType, parameterName), parameterType, false};
+            locals_[i] = {validateValue(arguments[i], parameterType, parameterName), parameterType, false};
         }
         executeStatements(function.statements);
         if (!function.returnType.empty() && function.returnType != "void") {
             throw std::runtime_error("Function '" + name + "' completed without returning a value");
         }
-        scopes_ = std::move(previousScopes);
+        locals_ = std::move(previousLocals);
         return std::monostate{};
     } catch (const ReturnSignal& signal) {
         RuntimeValue result = std::monostate{};
@@ -94,25 +100,26 @@ RuntimeValue Interpreter::callFunction(const std::string& name, const std::vecto
                 result = validateValue(*signal.value, function.returnType, "return value");
             }
         } catch (...) {
-            scopes_ = std::move(previousScopes);
+            locals_ = std::move(previousLocals);
             throw;
         }
-        scopes_ = std::move(previousScopes);
+        locals_ = std::move(previousLocals);
         return result;
     } catch (...) {
-        scopes_ = std::move(previousScopes);
+        locals_ = std::move(previousLocals);
         throw;
     }
 }
 
-void Interpreter::executeStatements(const std::vector<Statement>& statements)
+void Interpreter::executeStatements(const std::vector<Statement>& statements, bool clearSlots)
 {
+    const auto scope = analysis_->scopeSlots.find(&statements);
+    SlotClearGuard slotCleanup{locals_, !clearSlots || scope == analysis_->scopeSlots.end() ? nullptr : &scope->second};
     for (const auto& statement : statements) {
         if (statement.type == Statement::Type::VariableDeclaration) {
             const auto& declaration = *statement.variable;
             for (std::size_t i = 0; i < declaration.names.size(); ++i) {
                 const auto& name = declaration.names[i];
-                if (scopes_.back().contains(name)) throw std::runtime_error("Variable already declared in this scope: " + name);
                 RuntimeValue value = std::monostate{};
                 std::string type = declaration.type;
                 if (!declaration.values.empty()) {
@@ -120,7 +127,8 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                     if (type == "auto") type = inferType(evaluated);
                     value = validateValue(std::move(evaluated), type, name);
                 }
-                scopes_.back()[name] = {std::move(value), std::move(type), declaration.isConst};
+                const auto slot = analysis_->declarationSlots.at(&declaration) + i;
+                locals_[slot] = {std::move(value), std::move(type), declaration.isConst};
             }
         } else if (statement.type == Statement::Type::Assignment) {
             if (statement.name.ends_with(".limit")) {
@@ -136,10 +144,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 state->limit = value;
                 continue;
             }
-            auto scope = scopes_.rbegin();
-            while (scope != scopes_.rend() && !scope->contains(statement.name)) ++scope;
-            if (scope == scopes_.rend()) throw std::runtime_error("Cannot assign to undefined variable: " + statement.name);
-            auto& variable = scope->at(statement.name);
+            auto& variable = locals_[analysis_->assignmentSlots.at(&statement)];
             if (variable.isConst) throw std::runtime_error("Cannot assign to const variable: " + statement.name);
             if (!statement.indices.empty()) {
                 auto* array = std::get_if<std::shared_ptr<RuntimeArray>>(&variable.value);
@@ -201,23 +206,19 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
             bool matched = false;
             for (const auto& branch : statement.branches) {
                 if (requireBoolean(evaluate(*branch.condition), "if condition")) {
-                    scopes_.emplace_back();
-                    ScopePopGuard guard{scopes_};
                     executeStatements(branch.statements);
                     matched = true;
                     break;
                 }
             }
             if (!matched && !statement.elseStatements.empty()) {
-                scopes_.emplace_back();
-                ScopePopGuard guard{scopes_};
                 executeStatements(statement.elseStatements);
             }
         } else if (statement.type == Statement::Type::For || statement.type == Statement::Type::While) {
             const bool isForLoop = statement.type == Statement::Type::For;
-            scopes_.emplace_back();
-            ScopePopGuard loopScope{scopes_};
-            if (isForLoop) executeStatements(statement.initializer);
+            const auto loopSlots = analysis_->loopScopeSlots.find(&statement);
+            SlotClearGuard loopScopeCleanup{locals_, loopSlots == analysis_->loopScopeSlots.end() ? nullptr : &loopSlots->second};
+            if (isForLoop) executeStatements(statement.initializer, false);
             bool runElse = true;
             {
                 LoopState initialState;
@@ -249,7 +250,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                         --state.skipsRemaining;
                         if (isForLoop) {
                             try {
-                                executeStatements(statement.post);
+                                executeStatements(statement.post, false);
                             } catch (const LoopControlSignal& signal) {
                                 if (!handleLoopSignal(signal)) throw;
                             }
@@ -264,9 +265,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                     }
                     if (state.iterations == std::numeric_limits<std::uint64_t>::max()) throw std::runtime_error("Loop iteration counter overflow");
                     ++state.iterations;
-                    scopes_.emplace_back();
                     {
-                        ScopePopGuard bodyScope{scopes_};
                         try {
                             executeStatements(statement.loopStatements);
                         } catch (const LoopControlSignal& signal) {
@@ -282,7 +281,7 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                     }
                     if (isForLoop) {
                         try {
-                            executeStatements(statement.post);
+                            executeStatements(statement.post, false);
                         } catch (const LoopControlSignal& signal) {
                             if (!handleLoopSignal(signal)) throw;
                         }
@@ -298,8 +297,6 @@ void Interpreter::executeStatements(const std::vector<Statement>& statements)
                 if (!completedNormally) runElse = false;
             }
             if (runElse) {
-                scopes_.emplace_back();
-                ScopePopGuard elseScope{scopes_};
                 executeStatements(statement.loopElseStatements);
             }
         } else if (statement.type == Statement::Type::Break) {

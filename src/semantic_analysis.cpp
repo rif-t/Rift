@@ -9,7 +9,7 @@
 namespace rift {
 
 namespace {
-struct TypeInfo { std::string type; bool isConst = false; };
+struct TypeInfo { std::string type; bool isConst = false; std::size_t slot = 0; };
 using Types = std::vector<std::unordered_map<std::string, TypeInfo>>;
 using Functions = std::unordered_map<std::string, std::vector<const Function*>>;
 struct LoopInfo { std::string name; bool supportsRestartSkip = true; };
@@ -260,7 +260,10 @@ std::string inferExpressionType(const Expression& e, Types& scopes, const Functi
             }
         }
         for (auto s = scopes.rbegin(); s != scopes.rend(); ++s)
-            if (auto it = s->find(e.name); it != s->end()) return it->second.type;
+            if (auto it = s->find(e.name); it != s->end()) {
+                activeAnalysis->expressions[&e].localSlot = it->second.slot;
+                return it->second.type;
+            }
         throw std::runtime_error("Undefined variable: " + e.name);
     case Expression::Type::Unary: {
         const auto type = expressionType(*e.left, scopes, functions, program, loopStack);
@@ -380,7 +383,7 @@ bool returnsOnAllPaths(const std::vector<Statement>& statements)
     return false;
 }
 
-void checkStatements(const std::vector<Statement>& statements, Types& scopes, const Functions& functions, const Program& program, const std::string& returnType, LoopStack& loopStack)
+void checkStatements(const std::vector<Statement>& statements, Types& scopes, const Functions& functions, const Program& program, const std::string& returnType, LoopStack& loopStack, std::size_t& nextSlot)
 {
     for (const auto& s : statements) {
         if (s.type == Statement::Type::VariableDeclaration) {
@@ -399,7 +402,10 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
                     else if (type != "const" && !assignable(type, valueType))
                         throw std::runtime_error("Cannot initialize '" + name + "' of type " + type + " with " + valueType);
                 }
-                scopes.back()[name] = {type, d.isConst};
+                const std::size_t slot = nextSlot++;
+                scopes.back()[name] = {type, d.isConst, slot};
+                activeAnalysis->declarationSlots.try_emplace(&d, slot);
+                activeAnalysis->scopeSlots[&statements].push_back(slot);
             }
         } else if (s.type == Statement::Type::Assignment) {
             if (s.name.ends_with(".limit")) {
@@ -412,8 +418,10 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
             std::string target;
             bool found = false;
             bool isConst = false;
-            for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) if (auto it = scope->find(s.name); it != scope->end()) { target = it->second.type; isConst = it->second.isConst; found = true; break; }
+            std::size_t slot = 0;
+            for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) if (auto it = scope->find(s.name); it != scope->end()) { target = it->second.type; isConst = it->second.isConst; slot = it->second.slot; found = true; break; }
             if (!found) throw std::runtime_error("Cannot assign to undefined variable: " + s.name);
+            activeAnalysis->assignmentSlots[&s] = slot;
             if (isConst) throw std::runtime_error("Cannot assign to const variable: " + s.name);
             if (!s.indices.empty()) {
                 if (!arrayType(target)) throw std::runtime_error("Cannot index a non-array value");
@@ -453,13 +461,18 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
             for (const auto& branch : s.branches) {
                 const auto conditionType = expressionType(*branch.condition, scopes, functions, program, loopStack);
                 if (conditionType != "bool" && conditionType != "any") throw std::runtime_error("if condition must be bool");
-                scopes.emplace_back(); checkStatements(branch.statements, scopes, functions, program, returnType, loopStack); scopes.pop_back();
+                scopes.emplace_back(); checkStatements(branch.statements, scopes, functions, program, returnType, loopStack, nextSlot); scopes.pop_back();
             }
-            if (!s.elseStatements.empty()) { scopes.emplace_back(); checkStatements(s.elseStatements, scopes, functions, program, returnType, loopStack); scopes.pop_back(); }
+            if (!s.elseStatements.empty()) { scopes.emplace_back(); checkStatements(s.elseStatements, scopes, functions, program, returnType, loopStack, nextSlot); scopes.pop_back(); }
         } else if (s.type == Statement::Type::For || s.type == Statement::Type::While) {
             const bool isForLoop = s.type == Statement::Type::For;
             scopes.emplace_back();
-            if (isForLoop) checkStatements(s.initializer, scopes, functions, program, returnType, loopStack);
+            if (isForLoop) checkStatements(s.initializer, scopes, functions, program, returnType, loopStack, nextSlot);
+            if (isForLoop) {
+                auto& loopSlots = activeAnalysis->loopScopeSlots[&s];
+                const auto& initializerSlots = activeAnalysis->scopeSlots[&s.initializer];
+                loopSlots.insert(loopSlots.end(), initializerSlots.begin(), initializerSlots.end());
+            }
             if (!s.loopName.empty() && std::find_if(loopStack.begin(), loopStack.end(), [&](const LoopInfo& active) { return active.name == s.loopName; }) != loopStack.end())
                 throw std::runtime_error("Loop name is already active: " + s.loopName);
             loopStack.push_back({s.loopName, isForLoop});
@@ -468,12 +481,17 @@ void checkStatements(const std::vector<Statement>& statements, Types& scopes, co
                 if (conditionType != "bool" && conditionType != "any") throw std::runtime_error("Loop condition must be bool");
             }
             scopes.emplace_back();
-            checkStatements(s.loopStatements, scopes, functions, program, returnType, loopStack);
+            checkStatements(s.loopStatements, scopes, functions, program, returnType, loopStack, nextSlot);
             scopes.pop_back();
-            if (isForLoop) checkStatements(s.post, scopes, functions, program, returnType, loopStack);
+            if (isForLoop) {
+                checkStatements(s.post, scopes, functions, program, returnType, loopStack, nextSlot);
+                const auto& postSlots = activeAnalysis->scopeSlots[&s.post];
+                auto& loopSlots = activeAnalysis->loopScopeSlots[&s];
+                loopSlots.insert(loopSlots.end(), postSlots.begin(), postSlots.end());
+            }
             loopStack.pop_back();
             scopes.emplace_back();
-            checkStatements(s.loopElseStatements, scopes, functions, program, returnType, loopStack);
+            checkStatements(s.loopElseStatements, scopes, functions, program, returnType, loopStack, nextSlot);
             scopes.pop_back();
             scopes.pop_back();
         } else if (s.type == Statement::Type::Break) {
@@ -510,13 +528,15 @@ AnalysisResult validateProgram(const Program& program)
     if (!mainFunction->parameters.empty()) throw std::runtime_error("Function 'main' must not have parameters");
     for (const auto& f : program.functions) {
         Types scopes(1);
+        std::size_t nextSlot = 0;
         std::unordered_set<std::string> params;
         for (const auto& [name, type] : f.parameters) {
             if (!params.insert(name).second) throw std::runtime_error("Duplicate parameter '" + name + "' in function '" + f.name + "'");
-            scopes.back()[name] = {type, false};
+            scopes.back()[name] = {type, false, nextSlot++};
         }
         LoopStack loopStack;
-        checkStatements(f.statements, scopes, functions, program, f.returnType, loopStack);
+        checkStatements(f.statements, scopes, functions, program, f.returnType, loopStack, nextSlot);
+        result.functionSlotCounts[&f] = nextSlot;
         if (!f.returnType.empty() && f.returnType != "void" && !returnsOnAllPaths(f.statements))
             throw std::runtime_error("Function '" + f.name + "' may complete without returning a value");
     }

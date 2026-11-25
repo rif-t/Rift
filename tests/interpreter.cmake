@@ -195,6 +195,23 @@ func same(second: int32) -> int { return second }
 func main() {}
 ]=] 1 "Duplicate function overload: same")
 
+run_rift_case(indexed_local_shadowing_and_recursion [=[using std
+func sum(n: int, total: int) -> int {
+    if n == 0 { return total }
+    local := n
+    if true { local := local + 1 }
+    return sum(n - 1, total + local - 1)
+}
+func main() {
+    value := 42
+    for value := 0; value < 3; value++ {
+        item := value
+        if true { item := item + 1 }
+    }
+    println("{} {}", value, sum(3, 0))
+}
+]=] 0 "42 3\n")
+
 run_rift_case(for_loop_counting [=[using std
 func main() {
     total := 0
