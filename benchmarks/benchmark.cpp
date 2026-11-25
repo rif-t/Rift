@@ -273,6 +273,22 @@ item := values[1]
 
     const UInt128 dividend{UINT64_C(0xfedcba9876543210), UINT64_C(0x123456789abcdef0)};
     const UInt128 divisor{0, UINT64_C(123456789)};
+    const UInt128 narrowDividend{0, UINT64_C(9876543210123)};
+    const UInt128 narrowDivisor{0, UINT64_C(1234567)};
+    measure("UInt128 narrow multiply", 200000, [&] {
+        for (std::uint64_t i = 0; i < 200000; ++i) {
+            bool overflow = false;
+            const auto product = UInt128::multiply({0, i & 0xffffffffu}, {0, 3}, overflow);
+            resultSink = resultSink ^ product.low ^ static_cast<std::uint64_t>(overflow);
+        }
+    });
+    measure("UInt128 narrow divide", 200000, [&] {
+        for (std::uint64_t i = 0; i < 200000; ++i) {
+            UInt128 remainder{};
+            const auto quotient = UInt128::divide(narrowDividend, narrowDivisor, remainder);
+            resultSink = resultSink ^ quotient.low ^ remainder.low;
+        }
+    });
     measure("UInt128 multiply", 200000, [&] {
         for (std::uint64_t i = 0; i < 200000; ++i) {
             bool overflow = false;

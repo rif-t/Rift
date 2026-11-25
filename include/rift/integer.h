@@ -19,6 +19,11 @@ struct UInt128
 
     static UInt128 add(UInt128 a, UInt128 b, bool& overflow)
     {
+        if (a.high == 0 && b.high == 0) {
+            const auto low = a.low + b.low;
+            overflow = low < a.low;
+            return {0, low};
+        }
         UInt128 r{a.high + b.high, a.low + b.low};
         const bool highOverflow = r.high < a.high;
         const bool carry = r.low < a.low;
@@ -36,6 +41,12 @@ struct UInt128
 
     static UInt128 multiply(UInt128 a, UInt128 b, bool& overflow)
     {
+        if (a.high == 0 && b.high == 0) {
+            if (b.low == 0 || a.low <= UINT64_MAX / b.low) {
+                overflow = false;
+                return {0, a.low * b.low};
+            }
+        }
         std::uint32_t x[4] = {static_cast<std::uint32_t>(a.low), static_cast<std::uint32_t>(a.low >> 32), static_cast<std::uint32_t>(a.high), static_cast<std::uint32_t>(a.high >> 32)};
         std::uint32_t y[4] = {static_cast<std::uint32_t>(b.low), static_cast<std::uint32_t>(b.low >> 32), static_cast<std::uint32_t>(b.high), static_cast<std::uint32_t>(b.high >> 32)};
         std::uint32_t z[8]{};
@@ -60,6 +71,10 @@ struct UInt128
     static UInt128 divide(UInt128 value, UInt128 divisor, UInt128& remainder)
     {
         if (divisor == UInt128{}) throw std::runtime_error("Division by zero");
+        if (value.high == 0 && divisor.high == 0) {
+            remainder = {0, value.low % divisor.low};
+            return {0, value.low / divisor.low};
+        }
         UInt128 quotient{}, rem{};
         for (int bit = 127; bit >= 0; --bit) {
             const bool carry = (rem.high >> 63) != 0;

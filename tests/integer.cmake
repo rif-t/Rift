@@ -59,6 +59,16 @@ func main() {
 }
 ]=] 0 "18446744073709551615\n")
 
+run_rift_case(uint64_native_width_arithmetic [=[using std
+func main() {
+    maximum: uint64 = 18446744073709551615
+    value: uint64 = 4294967295
+    println(maximum / 3)
+    println(maximum % 3)
+    println(value * value)
+}
+]=] 0 "6148914691236517205\n0\n18446744065119617025\n")
+
 run_rift_case_contains(signed_width_overflow [=[using std
 func main() {
     value: int8 = 127
