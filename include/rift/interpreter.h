@@ -18,7 +18,7 @@ public:
 
 private:
     void executeStatements(const std::vector<Statement>& statements, bool clearSlots = true);
-    RuntimeValue callFunction(const std::string& name, std::vector<RuntimeValue> arguments, const Function* selected = nullptr);
+    RuntimeValue callFunction(const std::string& name, const std::vector<RuntimeValue>& arguments, const Function* selected = nullptr);
 
     RuntimeValue evaluate(const Expression& expression);
     RuntimeValue evaluateImpl(const Expression& expression);

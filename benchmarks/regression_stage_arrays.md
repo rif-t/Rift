@@ -1,19 +1,17 @@
 # Regression investigation: array arguments
 
-## Finding and change
+## Finding
 
-An array identifier evaluation creates a shallow `RuntimeValue` copy. That increment in the array's `shared_ptr` count is required: the callee must receive a separate logical value so a later write detaches under copy-on-write. Parameter initialization then passed the already-independent argument as an lvalue to `validateValue`, making another shallow `RuntimeValue` copy and reference-count update.
+The measured slowdown was not caused by a costly copy of array contents: Rift's copy-on-write arrays already copy only the shared handle on argument evaluation. Parameter initialization copies that handle once more through `validateValue`. A trial changed the private call path to move the evaluated argument vector and each parameter value, which removed a shared-pointer reference-count update in theory.
 
-`callFunction` now takes ownership of the evaluated argument vector, and parameter setup moves each value into `validateValue`. The first copy remains, preserving COW ownership and lifetime rules; the redundant parameter copy is removed. The signature is private to `Interpreter`.
+The trial did not show a reliable performance benefit. Grouped process medians were 487.0 μs before and 610.0 μs during the trial, with identical allocations/bytes (2,367 / 574,172). An interleaved before/final comparison measured 497.4 μs before and 579.6 μs after the surrounding fixes, also with unchanged allocation counts/bytes apart from a small unrelated reduction. Array mutation was 1.348 ms before and 1.376 ms after. Because process conditions still produce noticeable drift and the argument trial does not reduce allocations, the move change was reverted.
 
-## Measurements
+The historical report measured 531 μs on the original COW baseline and 627 μs before this investigation (+18.1%). The new matched three-way benchmark measured 610 μs on that baseline and 580 μs after these fixes. It therefore did not reproduce the earlier regression against the original baseline, but this stage has not demonstrated an improvement over the pre-fix implementation.
 
-The 2,048-element array / 100 calls benchmark measured 629.90 μs, 2,363 allocations, and 573,772 bytes immediately before this change, versus 579.23 μs, 2,363 allocations, and 573,772 bytes after. Time fell 8.0%; allocation counts and bytes did not change, as expected for removing shared-pointer copies rather than heap allocations. The before/after values are medians of seven `steady_clock` samples following warm-up, from Release MSVC 19.51 builds on the same host.
+## Correctness and future work
 
-The original comparison report measured 531 μs before the earlier optimizations and 627 μs before this investigation, so the new result remains about 9.1% slower than the old baseline. That comparison also varies by benchmark revision and warm-up methodology; the paired measurements above are stronger evidence for this change.
+The `array_argument_keeps_value_semantics` test passes an array through two function calls, mutates a nested element in the callee, and confirms the original remains unchanged. Existing tests cover array returns, assignments, append, indexed writes, and deep COW detachment. No COW representation or semantics were changed.
 
-The expanded benchmark now also measures array arguments unused by the callee, mutation, nested arrays, and returning arrays. See [`regression_stage_arrays_raw.txt`](regression_stage_arrays_raw.txt). The COW regression test passes an array through two calls, mutates a nested value in the callee, and confirms the caller's value is unchanged.
+The benchmark measures unused, reading, mutating, nested, and returned array arguments. Raw paired results are in [before](regression_paired_before_raw.txt) and [after](regression_paired_after_raw.txt). The move trial was rejected; current evidence does not justify another ownership/API change.
 
-## Verification and limits
-
-All 9 CTest targets passed. The complete benchmark includes seven measured samples per workload and one warm-up. Counts include ordinary `new`/`new[]`, not allocator metadata or peak memory. WPA/VS Profiler is unavailable here, so no CPU call-stack profile is claimed.
+WPA/VS Profiler was unavailable, so call-stack samples were not analyzed. Allocation counters include ordinary `new`/`new[]`, not allocator metadata or peak memory.

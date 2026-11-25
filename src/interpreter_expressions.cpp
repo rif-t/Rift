@@ -406,7 +406,7 @@ RuntimeValue Interpreter::evaluateImpl(const Expression& expression)
             arguments.push_back(evaluate(*argument));
             if (flow_.type != ExecutionFlow::Type::Normal) return std::monostate{};
         }
-        return callFunction(expression.name, std::move(arguments), analysis_->expressions.at(&expression).resolvedFunction);
+        return callFunction(expression.name, arguments, analysis_->expressions.at(&expression).resolvedFunction);
     }
     }
     throw std::runtime_error("Unknown expression");
